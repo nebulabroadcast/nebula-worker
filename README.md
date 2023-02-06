@@ -19,9 +19,35 @@ feel free to open an issue in the repository or contribute to the code by submit
 
 Build the image locally from the included `Dockerfile` or pull `nebulabroadcast/nebula-worker` from Docker Hub.
 
+Docker compose is usually the best way to run Nebula worker node,
+since all the configuration is done in a single `docker-compose.yml` file.
+
 In order to mount external storage, the container need to be privileged.
 By running the container in privileged mode, it will have access to the host's resources, 
 including the ability to mount external storage. 
+
+The following command will run the container in privileged mode.
+Keep in mind that worker node services are started based on the hostnames,
+so setting the container hostname is crucial.
+
+In case worker is running a service which expects incoming network traffic, 
+such as play service, don't forget to expose the ports.
+
+
+```yaml
+version: '3.7'
+
+worker:
+  image: nebulabroadcast/nebula-worker:latest
+  hostname: worker01
+  cap_add:
+    - SYS_ADMIN
+    - DAC_READ_SEARCH
+  privileged: true
+  ports:
+    - 42100:42100    # play service
+    - 6250:6250/udp  # OSC control for casparcg
+```
 
 ### Bare metal
 
@@ -33,6 +59,8 @@ Software requirements:
  - Poetry
  - FFMpeg
  - cifs-utils (for mounting SMB shares)
+
+Installation:
 
 1. Install the required software
 2. Clone this repository to `/opt/nebula`
