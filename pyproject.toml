@@ -1,0 +1,35 @@
+[tool.poetry]
+name = "nebula-worker"
+version = "6.0.0"
+description = ""
+authors = ["Nebula Broadcast <info@nebulabroadcast.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+PyYAML = "^6.0"
+conti = "^1.0"
+mistune = "^2.0.4"
+nxtools = "^1.6"
+promexp = "^1.0.2"
+psutil = "^5.9.0"
+psycopg2-binary = "^2.9.3"
+pydantic = "^1.10.4"
+redis = "^4.3.4"
+requests = "^2.27.1"
+python-dotenv = "^0.21.0"
+
+[tool.poetry.dev-dependencies]
+black = "^22.1.0"
+flake8 = "^4.0.1"
+mypy = "^0.941"
+isort = "^5.10.1"
+
+[tool.isort]
+profile = "black"
+
+[tool.black]
+line-length = 88
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
