@@ -51,4 +51,4 @@ Most important directives are:
  - NEBULA_SITE_NAME 
  - NEBULA_POSTGRES - PostgreSQL connection string (e.g. `postgresql://user:password@host:port/database`)
  - NEBULA_REDIS - Redis connection string (e.g. `redis://user:password@host:port/database`)
- - PLUGIN_DIR - Path to the directory containing plugins
+ - NEBULA_PLUGIN_DIR - Path to the directory containing plugins
