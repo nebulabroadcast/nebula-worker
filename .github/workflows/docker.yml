@@ -1,0 +1,24 @@
+name: Publish docker image
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Build the server image
+      run: docker build . --file Dockerfile --tag nebulabroadcast/nebula-worker:latest
+
+    - name: Push the server image
+      run: docker push nebulabroadcast/nebula-worker:latest
