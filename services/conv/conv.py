@@ -139,4 +139,3 @@ class Service(BaseService):
         speed = duration / elapsed_time
 
         self.job.done(f"Finished in {s2words(elapsed_time)} ({speed:.02f}x realtime)")
-

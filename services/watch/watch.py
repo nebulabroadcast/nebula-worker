@@ -133,4 +133,3 @@ class Service(BaseService):
 
                 if not failed:
                     asset.save(set_mtime=False)
-

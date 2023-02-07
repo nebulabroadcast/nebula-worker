@@ -171,4 +171,3 @@ class Service(BaseService):
         for pconfg in nebula.settings.playout_channels:
             pst = PlayoutStorageTool(pconfg)
             pst.main()
-

@@ -36,11 +36,17 @@ class DB:
         if not NEBULA_IS_INSTALLED:
             while True:
                 try:
-                    self.query("SELECT * FROM settings")
-                    assert self.fetchone()
+                    self.query("SELECT * FROM settings LIMIT 1")
+                except psycopg2.errors.UndefinedTable:
+                    self.rollback()
+                    log.warning("Database not installed, retrying in 1 second...")
+                    time.sleep(1)
+                    continue
+
+                try:
+                    assert self.fetchall()
                 except Exception:
-                    log.traceback()
-                    log.warning("Waiting for DB schema")
+                    log.warning("Waiting for settings, retrying in 1 second...")
                     time.sleep(3)
                 else:
                     NEBULA_IS_INSTALLED = True

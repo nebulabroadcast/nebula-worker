@@ -30,6 +30,8 @@ class Logger:
             f"{level.name.upper():<8}",
             f"{kwargs.get('user') or self.user:<10}",
             " ".join([str(arg) for arg in args]),
+            file=sys.stderr,
+            flush=True,
         )
 
     def trace(self, *args, **kwargs):

@@ -515,4 +515,3 @@ class Service(BaseService):
             return
 
         self.on_change()
-

@@ -69,4 +69,3 @@ class Service(BaseService):
             self.plugin.on_main()
         elif self.exec_main:
             exec(self.exec_main)
-
