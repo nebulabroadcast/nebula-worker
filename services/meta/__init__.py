@@ -179,11 +179,15 @@ class Service(BaseService):
 
         elif asset["status"] in (ObjectStatus.CREATING, ObjectStatus.OFFLINE):
             nebula.log.success(f"{asset}: Turning online")
+
+            # Do not restart actions if file just reappeared
+            restart_actions = asset["status"] == ObjectStatus.CREATING
+
             asset["status"] = ObjectStatus.ONLINE
             asset["qc/state"] = 0
             asset.save()
 
-            if self.restart_on_update:
+            if self.restart_on_update and restart_actions:
                 if type(self.restart_on_update) == list:
                     actions_to_restart = ",".join(self.restart_on_update)
                     action_cond = f"AND id_action in ({actions_to_restart})"
