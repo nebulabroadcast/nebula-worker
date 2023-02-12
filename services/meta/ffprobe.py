@@ -17,8 +17,8 @@ def string2cs(key, value):
     vslug = slugify(value, separator=" ")
     best_match = None
     max_ratio = 0
-    for ckey in cs.data:
-        cval = cs.alias(ckey, "en")
+    for ckey, cals in settings.cs[cs].items():
+        cval = cals.aliases["en"].title
         reflist = [v.strip() for v in cval.split("/")]
         for m in reflist:
             mslug = slugify(m, separator=" ")
@@ -53,7 +53,11 @@ def ffprobe_asset(asset: Asset):
             continue
 
         if key == "genre" and settings.metatypes["genre"].metaclass == MetaClass.SELECT:
-            if (new_val := string2cs("genre", value)) is None:
+            try:
+                if (new_val := string2cs("genre", value)) is None:
+                    continue
+            except Exception:
+                nebula.log.traceback("Unable to parse genre")
                 continue
             asset["genre/original"] = value
             value = new_val

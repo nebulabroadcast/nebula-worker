@@ -145,8 +145,9 @@ class Service(BaseService):
 
                 keys = list(asset.meta.keys())
                 for key in keys:
-                    if settings.metatypes[key].ns in ("f", "q"):
-                        del asset.meta[key]
+                    if key in settings.metatypes:
+                        if settings.metatypes[key].ns in ("f", "q"):
+                            del asset.meta[key]
 
                 asset["file/size"] = fsize
                 asset["file/mtime"] = fmtime
