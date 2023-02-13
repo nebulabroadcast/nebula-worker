@@ -17,7 +17,8 @@ feel free to open an issue in the repository or contribute to the code by submit
 
 ### Docker
 
-Build the image locally from the included `Dockerfile` or pull `nebulabroadcast/nebula-worker` from Docker Hub.
+Build the image locally from the included `Dockerfile` 
+or pull `nebulabroadcast/nebula-worker` from Docker Hub.
 
 Docker compose is usually the best way to run Nebula worker node,
 since all the configuration is done in a single `docker-compose.yml` file.
@@ -72,7 +73,7 @@ Nebula worker must run as root in order to mount external storages.
 ### Configuration
 
 The worker node can be configured using environment variables.
-See the `nebula/config.py` file for a list of available options.
+See the `nebula/config.py` file for a list of available options and their defaults.
 
 Most important directives are:
 
@@ -80,3 +81,5 @@ Most important directives are:
  - NEBULA_POSTGRES - PostgreSQL connection string (e.g. `postgresql://user:password@host:port/database`)
  - NEBULA_REDIS - Redis connection string (e.g. `redis://user:password@host:port/database`)
  - NEBULA_PLUGIN_DIR - Path to the directory containing plugins
+
+When installing on bare metal, you may use .env file for settings enviroment variables.

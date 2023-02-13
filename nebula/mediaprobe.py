@@ -99,7 +99,7 @@ def mediaprobe(source_file: str) -> dict[str, Any]:
     if not probe_result:
         return {}
 
-    meta = {"audio_tracks": []}
+    meta: dict[str, Any] = {"audio_tracks": []}
 
     format_info = probe_result["format"]
     source_vdur = 0
