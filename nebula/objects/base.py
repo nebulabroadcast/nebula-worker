@@ -201,11 +201,13 @@ class ItemMixIn:
         key = key.lower().strip()
         if key not in self.meta:
             if key == "id_asset":
-                return 0
+                return None
             elif self.asset:
                 return self.asset[key]
+            elif key in settings.metatypes:
+                return settings.metatypes[key].default
             else:
-                return self.meta_types[key].default
+                return None
         return self.meta[key]
 
     @property

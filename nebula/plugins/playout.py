@@ -6,7 +6,7 @@ from nebula.storages import storages
 
 
 class PlayoutPluginSlot:
-    def __init__(self, slot_type, slot_name, **kwargs):
+    def __init__(self, slot_type: str, slot_name: str, **kwargs):
         assert slot_type in ["action", "text", "number", "select"]
         self.type = slot_type
         self.name = slot_name
@@ -26,10 +26,11 @@ class PlayoutPluginSlot:
 class PlayoutPlugin:
     def __init__(self, service):
         self.service = service
-        self.playout_dir = os.path.join(
-            storages[self.channel_config["playout_storage"]].local_path,
-            self.channel_config["playout_dir"],
-        )
+        if self.channel.playout_storage and self.channel.playout_dir:
+            self.playout_dir = os.path.join(
+                storages[self.channel.playout_storage].local_path,
+                self.channel.playout_dir,
+            )
         self.id_layer = 0
         self.slots = []
         self.tasks = []
@@ -63,11 +64,11 @@ class PlayoutPlugin:
 
     @property
     def id_channel(self):
-        return self.service.id_channel
+        return self.service.channel.id
 
     @property
-    def channel_config(self):
-        return self.service.channel_config
+    def channel(self):
+        return self.service.channel
 
     @property
     def current_asset(self):
@@ -100,8 +101,8 @@ class PlayoutPlugin:
             log.traceback()
         self.busy = False
 
-    def layer(self, id_layer=False):
-        if not id_layer:
+    def layer(self, id_layer: int | None = None) -> str:
+        if id_layer is None:
             id_layer = self.id_layer
         return f"{self.service.controller.caspar_channel}-{id_layer}"
 

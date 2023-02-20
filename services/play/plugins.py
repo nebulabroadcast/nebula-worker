@@ -15,7 +15,7 @@ class PlayoutPlugins:
         self.plugins = []
         bpath = get_plugin_path("playout")
         if not bpath:
-            nebula.log.warning("Playout plugins directory does not exist")
+            nebula.log.warning(f"Playout plugins directory {bpath} does not exist")
             return
 
         for plugin_name in self.service.channel.plugins:

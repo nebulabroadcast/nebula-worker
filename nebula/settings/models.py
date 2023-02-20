@@ -66,6 +66,12 @@ class BaseSystemSettings(SettingsModel):
         "(when set to false, assets can only be created via API and watch folders)",
     )
 
+    ui_asset_preview: bool = Field(
+        True,
+        title="Preview assets in UI",
+        description="Allow previewing low-res proxies of assets in the UI",
+    )
+
 
 class SystemSettings(BaseSystemSettings):
     """System settings.
@@ -76,6 +82,8 @@ class SystemSettings(BaseSystemSettings):
 
     proxy_storage: int = Field(1, title="Proxy storage")
     proxy_path: str = Field(".nx/proxy/{id1000:04d}/{id}.mp4")
+    worker_plugin_storage: int = Field(1)
+    worker_plugin_path: str = Field(".nx/plugins")
 
     smtp_host: str | None = Field(None, title="SMTP host")
     smtp_port: int | None = Field(None, title="SMTP port")

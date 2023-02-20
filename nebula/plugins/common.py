@@ -1,11 +1,14 @@
 import os
 import sys
 
-from nebula.config import config
+import nebula
 
 
-def get_plugin_path(group=False):
-    plugin_path = config.plugin_dir
+def get_plugin_path(group: str | None = None) -> str:
+    plugin_path = os.path.join(
+        nebula.storages[nebula.settings.system.worker_plugin_storage].local_path,
+        nebula.settings.system.worker_plugin_path,
+    )
     if group:
         plugin_path = os.path.join(plugin_path, group)
     if not os.path.isdir(plugin_path):
