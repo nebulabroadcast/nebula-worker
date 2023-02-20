@@ -121,8 +121,10 @@ class Service(BaseService):
             return NebulaResponse(404, f"Unable to cue. {item} does not exist")
 
         if item["item_role"] == "live":
+            fname = self.channel.config.get("live_source")
+            if fname is None:
+                return NebulaResponse(400, "Live source is not configured")
             nebula.log.info("Next is item is live")
-            fname = self.channel.live_source
             response = self.controller.cue(fname, item, **kwargs)
             if response.is_success:
                 self.cued_live = True
@@ -206,7 +208,7 @@ class Service(BaseService):
         else:
             auto = True
 
-        nebula.log.info("Auto-cueing {}".format(item_next))
+        nebula.log.info(f"Auto-cueing {item_next}")
         result = self.cue(item=item_next, play=play, auto=auto)
 
         if result.is_error:

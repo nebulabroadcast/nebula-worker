@@ -126,10 +126,12 @@ class CasparController:
         self.paused = foreground.paused
         self.loop = foreground.loop
 
-        #        if cued_fname and (not self.paused) and (pos == self.pos) and (not self.parent.current_live) and self.cued_item and (not self.cued_item["run_mode"]):
+        #        if cued_fname and (not self.paused) and (pos == self.pos) \
+        #        and (not self.parent.current_live) and self.cued_item \
+        #        and (not self.cued_item["run_mode"]):
         #            if self.stalled and self.stalled < time.time() - 5:
         #                logging.warning("Stalled for a long time")
-        #                logging.warning("Taking stalled clip (pos: {})".format(self.pos))
+        #                logging.warning("Taking stalled clip (pos: {self.pos})")
         #                self.take()
         #            elif not self.stalled:
         #                logging.debug("Playback is stalled")
@@ -191,7 +193,7 @@ class CasparController:
                     self.cueing = False
 
             else:
-                nebula.log.debug(f"Waiting for cue {self.cueing} (is {cued_fname})")
+                # nebula.log.debug(f"Waiting for cue {self.cueing} (is {cued_fname})")
                 if time.time() - self.cueing_time > 5 and self.current_item:
                     nebula.log.warning("Cueing again")
                     self.cueing = False
