@@ -3,7 +3,6 @@ import time
 from nxtools import s2words, xml
 
 import nebula
-
 from nebula.base_service import BaseService
 from nebula.db import DB
 from nebula.enum import JobState

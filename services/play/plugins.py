@@ -2,7 +2,6 @@ import imp
 import os
 
 import nebula
-
 from nebula.plugins import get_plugin_path
 
 

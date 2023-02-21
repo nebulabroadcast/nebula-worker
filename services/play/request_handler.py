@@ -2,7 +2,6 @@ import json
 from http.server import BaseHTTPRequestHandler
 
 import nebula
-
 from nebula.response import NebulaResponse
 
 

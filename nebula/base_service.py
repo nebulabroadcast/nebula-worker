@@ -1,6 +1,5 @@
 import sys
 import time
-
 from typing import TYPE_CHECKING
 
 from nebula.db import DB

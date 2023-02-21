@@ -1,7 +1,6 @@
 import os
 import pprint
 import time
-
 from typing import Any
 
 from nebula.enum import ContentType, MediaType
@@ -15,8 +14,8 @@ from nebula.storages import storages
 class BaseObject:
     """Base object properties."""
 
-    required = []
-    defaults = {}
+    required: list[str] = []
+    defaults: dict[str, Any] = {}
 
     def __init__(self, id=False, **kwargs):
         """Object constructor."""

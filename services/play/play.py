@@ -4,17 +4,14 @@ import time
 from http.server import HTTPServer
 
 import nebula
-
 from nebula.base_service import BaseService
 from nebula.db import DB
 from nebula.enum import ObjectStatus, RunMode
 from nebula.helpers import get_item_event, get_next_item
 from nebula.objects import Asset, Event, Item
 from nebula.response import NebulaResponse
-
 from services.play.plugins import PlayoutPlugins
 from services.play.request_handler import PlayoutRequestHandler
-
 
 DEFAULT_STATUS = {
     "status": ObjectStatus.OFFLINE,

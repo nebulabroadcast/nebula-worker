@@ -5,7 +5,6 @@ import time
 from nxtools.caspar import CasparCG
 
 import nebula
-
 from nebula.helpers import bin_refresh
 from nebula.objects import Item
 from nebula.response import NebulaResponse
