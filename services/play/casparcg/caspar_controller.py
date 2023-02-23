@@ -2,13 +2,13 @@ import os
 import threading
 import time
 
-from nxtools.caspar import CasparCG
 
 import nebula
 from nebula.helpers import bin_refresh
 from nebula.objects import Item
 from nebula.response import NebulaResponse
 
+from .amcp import CasparCG
 from .caspar_data import CasparOSCServer
 
 
