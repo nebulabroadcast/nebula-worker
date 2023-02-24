@@ -139,6 +139,13 @@ class CasparController:
         #            logging.debug("No longer stalled")
         #            self.stalled = False
 
+        # casparcg duration is of the complete clip when osc is used
+        # stupid.
+        if self.current_item["mark_out"]:
+            dur = min(dur, self.current_item["mark_out"])
+        if self.current_item["mark_in"]:
+            dur -= self.current_item["mark_in"]
+
         self.pos = pos
         self.dur = dur
 

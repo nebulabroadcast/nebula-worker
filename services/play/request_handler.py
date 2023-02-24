@@ -38,8 +38,8 @@ class PlayoutRequestHandler(BaseHTTPRequestHandler):
             self.error(400, "Play service received a bad request.")
             return
 
-        length = int(self.headers.get("content-length"))
-        postvars = json.loads(self.rfile.read(length))
+        length = int(self.headers.get("content-length", -1))
+        postvars = json.loads(self.rfile.read1(length))
 
         method = self.path.lstrip("/").split("/")[0]
 

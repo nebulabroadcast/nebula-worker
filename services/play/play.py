@@ -1,4 +1,3 @@
-import json
 import threading
 import time
 from http.server import HTTPServer
@@ -251,31 +250,28 @@ class Service(BaseService):
 
     def plugin_list(self, **kwargs):
         result = []
-        for id_plugin, plugin in enumerate(self.plugins):
-            if not plugin.slots:
+        for plugin in self.plugins:
+            if not plugin.manifest.slots:
                 continue
-            result.append(
-                {
-                    "id": id_plugin,
-                    "title": plugin.title,
-                    "slots": plugin.slot_manifest,
-                }
-            )
-        return NebulaResponse(200, data=result)
+            result.append(plugin.manifest.dict())
+        return NebulaResponse(200, plugins=result)
 
     def plugin_exec(self, **kwargs):
-        action = kwargs.get("action_name", False)
-        data = json.loads(kwargs.get("data", "{}"))
-        id_plugin = int(kwargs["id_plugin"])
-        nebula.log.debug("Executing playout plugin:", action, id_plugin, data)
-        if not action:
-            return NebulaResponse(400, "No plugin action requested")
+        plugin_name = kwargs.get("name", None)
+        action = kwargs.get("action", None)
+        data = kwargs.get("data", None)
+
+        if not (plugin_name and action):
+            return NebulaResponse(400, "plugin or action not specified")
+
+        nebula.log.debug(f"Executing {plugin_name}.{action}")
         try:
-            plugin = self.plugins[id_plugin]
-        except (KeyError, IndexError):
+            plugin = self.plugins[plugin_name]
+        except KeyError:
             nebula.log.traceback()
-            return NebulaResponse(400, "No such action")
-        if plugin.on_command(action, **data):
+            return NebulaResponse(400, f"Plugin {plugin_name} not active")
+
+        if plugin.on_command(action, data):
             return NebulaResponse(200)
         else:
             return NebulaResponse(500, "Playout plugin failed")

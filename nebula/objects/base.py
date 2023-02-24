@@ -201,7 +201,7 @@ class ItemMixIn:
         if key not in self.meta:
             if key == "id_asset":
                 return None
-            elif self.asset:
+            elif self.asset and key not in ["mark_in", "mark_out"]:
                 return self.asset[key]
             elif key in settings.metatypes:
                 return settings.metatypes[key].default
@@ -240,21 +240,35 @@ class ItemMixIn:
     @property
     def duration(self):
         """Final duration of the item"""
-        if self["id_asset"]:
-            dur = self.asset["duration"] or 0
-        elif self["duration"]:
-            dur = self["duration"] or 0
-        else:
-            return self.mark_out() - self.mark_in()
-        if not dur:
-            return 0
-        mark_in = self.mark_in()
-        mark_out = self.mark_out()
-        if mark_out > 0:
-            dur = mark_out + (1 / self.fps)
-        if mark_in > 0:
-            dur -= mark_in
-        return dur
+
+        if not self["id_asset"]:
+            return self["duration"]
+
+        if self.meta.get("mark_out"):
+            return (self.meta.get("mark_out") or 0) - (self.meta.get("mark_in") or 0)
+
+        # Item does not have explicit duration so we use raw asset duration instead
+        # do not use marked (asset.duration) duration here.
+        # marks from items must be used
+
+        return self.asset["duration"]
+
+        #
+        # if self["id_asset"]:
+        #     dur = self.asset["duration"] or 0
+        # elif self["duration"]:
+        #     dur = self["duration"] or 0
+        # else:
+        #     return self.mark_out() - self.mark_in()
+        # if not dur:
+        #     return 0
+        # mark_in = self.mark_in()
+        # mark_out = self.mark_out()
+        # if mark_out > 0:
+        #     dur = mark_out + (1 / self.fps)
+        # if mark_in > 0:
+        #     dur -= mark_in
+        # return dur
 
     @property
     def fps(self):
