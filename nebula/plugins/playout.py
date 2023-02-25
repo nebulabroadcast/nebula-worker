@@ -1,15 +1,15 @@
 import os
 import threading
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
-from typing import Any, Literal, Callable, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from nebula.log import log
 from nebula.storages import storages
 
 if TYPE_CHECKING:
-    from services.play import Play as PlayService
     from nebula.settings.models import PlayoutChannelSettings
+    from services.play import Service as PlayService
 
 
 class PlayoutPluginSlotOption(BaseModel):
@@ -36,7 +36,7 @@ class PlayoutPluginManifest(BaseModel):
 
 class PlayoutPlugin:
     name: str
-    title: str = None
+    title: str | None = None
     id_layer: int = 0
     slots: list[PlayoutPluginSlot] = []
     tasks: list[Callable] = []

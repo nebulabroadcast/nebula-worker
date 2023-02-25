@@ -122,7 +122,6 @@ class BaseServiceSettings(SettingsModel):
     name: str = Field(...)
     type: str = Field(...)
     host: str = Field(...)
-    name: str = Field(...)
     autostart: bool = Field(True)
     loop_delay: int = Field(5)
     state: ServiceState = Field(ServiceState.STOPPED)
