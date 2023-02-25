@@ -1,45 +1,52 @@
 import os
 import threading
 import time
-
+from typing import TYPE_CHECKING, Any
 
 import nebula
 from nebula.helpers import bin_refresh
-from nebula.objects import Item
 from nebula.response import NebulaResponse
 
 from .amcp import CasparCG
 from .caspar_data import CasparOSCServer
 
+if TYPE_CHECKING:
+    from services.play import Service as PlayService
+
 
 class CasparController:
     time_unit = "s"
+    service: "PlayService"
 
-    def __init__(self, parent):
+    def __init__(self, parent: "PlayService"):
         self.parent = parent
 
-        self.caspar_host = parent.channel.config.get("caspar_host", "localhost")
-        self.caspar_port = int(parent.channel.config.get("caspar_port", 5250))
-        self.caspar_osc_port = int(parent.channel.config.get("caspar_osc_port", 5253))
-        self.caspar_channel = int(parent.channel.config.get("caspar_channel", 1))
-        self.caspar_feed_layer = int(parent.channel.config.get("caspar_feed_layer", 10))
+        self.caspar_host: str = parent.channel.config.get("caspar_host", "localhost")
+        self.caspar_port: int = int(parent.channel.config.get("caspar_port", 5250))
+        self.caspar_osc_port: int = int(
+            parent.channel.config.get("caspar_osc_port", 5253)
+        )
+        self.caspar_channel: int = int(parent.channel.config.get("caspar_channel", 1))
+        self.caspar_feed_layer: int = int(
+            parent.channel.config.get("caspar_feed_layer", 10)
+        )
 
         self.should_run = True
-
-        self.current_item = Item()
-        self.current_fname = False
-        self.cued_item = False
-        self.cued_fname = False
-        self.cueing = False
-        self.cueing_time = 0
-        self.cueing_item = False
+        self.current_item: nebula.Item | None = None
+        self.current_fname: str | None = None
+        self.cued_item: nebula.Item | None = None
+        self.cued_fname: str | None = None
+        self.cueing: str | bool = False
+        self.cueing_time: float = 0
+        self.cueing_item: nebula.Item | None = None
         self.stalled = False
 
         # To be updated based on CCG data
-        self.channel_fps = self.fps
-        self.paused = False
-        self.loop = False
-        self.pos = self.dur = 0
+        self.channel_fps: float = self.fps
+        self.paused: bool = False
+        self.loop: bool = False
+        self.pos: float = 0
+        self.dur: float = 0
 
         if not self.connect():
             nebula.log.error("Unable to connect CasparCG Server. Shutting down.")
@@ -125,26 +132,13 @@ class CasparController:
         self.paused = foreground.paused
         self.loop = foreground.loop
 
-        #        if cued_fname and (not self.paused) and (pos == self.pos) \
-        #        and (not self.parent.current_live) and self.cued_item \
-        #        and (not self.cued_item["run_mode"]):
-        #            if self.stalled and self.stalled < time.time() - 5:
-        #                logging.warning("Stalled for a long time")
-        #                logging.warning("Taking stalled clip (pos: {self.pos})")
-        #                self.take()
-        #            elif not self.stalled:
-        #                logging.debug("Playback is stalled")
-        #                self.stalled = time.time()
-        #        elif self.stalled:
-        #            logging.debug("No longer stalled")
-        #            self.stalled = False
-
         # casparcg duration is of the complete clip when osc is used
         # stupid.
-        if self.current_item["mark_out"]:
-            dur = min(dur, self.current_item["mark_out"])
-        if self.current_item["mark_in"]:
-            dur -= self.current_item["mark_in"]
+        if self.current_item is not None:
+            if self.current_item["mark_out"]:
+                dur = min(dur, self.current_item["mark_out"])
+            if self.current_item["mark_in"]:
+                dur -= self.current_item["mark_in"]
 
         self.pos = pos
         self.dur = dur
@@ -163,7 +157,7 @@ class CasparController:
                 self.current_item = self.cued_item
                 self.current_fname = "LIVE"
                 advanced = True
-                self.cued_item = False
+                self.cued_item = None
                 self.parent.on_live_enter()
 
         else:
@@ -172,30 +166,35 @@ class CasparController:
                     self.current_item = self.cued_item
                     self.current_fname = self.cued_fname
                     advanced = True
-                self.cued_item = False
+                self.cued_item = None
 
         if advanced and not self.cueing:
+            nebula.log.debug(
+                f"OnChange: current {self.current_item} cued {self.cued_item}"
+            )
             try:
                 self.parent.on_change()
             except Exception:
                 nebula.log.traceback("Playout on_change failed")
 
-        if self.current_item and not self.cued_item and not self.cueing:
+        if self.current_item and (self.cued_item is None) and not self.cueing:
             self.cueing = True
             if not self.parent.cue_next():
                 self.cueing = False
 
         if self.cueing:
             if cued_fname == self.cueing:
-                nebula.log.success(f"Cued {self.cueing}")
                 self.cued_item = self.cueing_item
-                self.cueing_item = False
+                nebula.log.success(
+                    f"Cued {self.cued_item}. Current item {self.current_item}"
+                )
+                self.cueing_item = None
                 self.cueing = False
             elif self.parent.cued_live:
                 if background.producer != "empty":
                     nebula.log.success(f"Cued {self.cueing}")
                     self.cued_item = self.cueing_item
-                    self.cueing_item = False
+                    self.cueing_item = None
                     self.cueing = False
 
             else:
@@ -215,7 +214,7 @@ class CasparController:
             nebula.log.error(
                 f"Cue mismatch: IS: {cued_fname} SHOULDBE: {self.cued_fname}"
             )
-            self.cued_item = False
+            self.cued_item = None
 
         self.current_fname = current_fname
         self.cued_fname = cued_fname
@@ -225,8 +224,18 @@ class CasparController:
         except Exception:
             nebula.log.traceback("Playout on_progress failed")
 
-    def cue(self, fname, item, layer=None, play=False, auto=True, loop=False, **kwargs):
-        layer = layer or self.caspar_feed_layer
+    def cue(
+        self,
+        fname: str,
+        item: nebula.Item,
+        layer: int | None = None,
+        play: bool = False,
+        auto: bool = True,
+        loop: bool = False,
+        **kwargs,
+    ):
+        if layer is None:
+            layer = self.caspar_feed_layer
 
         query_list = ["PLAY" if play else "LOADBG"]
         query_list.append(f"{self.caspar_channel}-{layer}")
@@ -251,27 +260,29 @@ class CasparController:
 
         if result.is_error:
             message = f'Unable to cue "{fname}" {result.data}'
-            self.cued_item = Item()
-            self.cued_fname = False
+            self.cued_item = None
+            self.cued_fname = None
             self.cueing = False
-            self.cueing_item = False
+            self.cueing_item = None
             self.cueing_time = 0
             return NebulaResponse(result.response, message)
         if play:
             self.cueing = False
-            self.cueing_item = False
+            self.cueing_item = None
             self.cueing_time = 0
-            self.current_item = item
+            self.current_item = None
             self.current_fname = fname
         return NebulaResponse(200)
 
-    def clear(self, layer=None):
-        layer = layer or self.caspar_feed_layer
-        result = self.query(f"CLEAR {self.channel}-{layer}")
+    def clear(self, layer: int | None = None):
+        if layer is None:
+            layer = self.caspar_feed_layer
+        result = self.query(f"CLEAR {self.caspar_channel}-{layer}")
         return NebulaResponse(result.response, result.data)
 
-    def take(self, **kwargs):
-        layer = kwargs.get("layer", self.caspar_feed_layer)
+    def take(self, layer: int | None = None):
+        if layer is None:
+            layer = self.caspar_feed_layer
         if not self.cued_item or self.cueing:
             return NebulaResponse(400, "Unable to take. No item is cued.")
         result = self.query(f"PLAY {self.caspar_channel}-{layer}")
@@ -284,10 +295,13 @@ class CasparController:
             message = "Take failed: {result.data}"
         return NebulaResponse(result.response, message)
 
-    def retake(self, **kwargs):
-        layer = kwargs.get("layer", self.caspar_feed_layer)
+    def retake(self, layer: int | None = None):
+        if layer is None:
+            layer = self.caspar_feed_layer
         if self.parent.current_live:
             return NebulaResponse(409, "Unable to retake live item")
+        if self.current_item is None:
+            return NebulaResponse(409, "Unable to retake. No current item")
         seekparams = "SEEK " + str(int(self.current_item.mark_in() * self.channel_fps))
         if self.current_item.mark_out():
             seekparams += " LENGTH " + str(
@@ -306,8 +320,9 @@ class CasparController:
             message = "Take command failed: " + result.data
         return NebulaResponse(result.response, message)
 
-    def freeze(self, **kwargs):
-        layer = kwargs.get("layer", self.caspar_feed_layer)
+    def freeze(self, layer: int | None = None):
+        if layer is None:
+            layer = self.caspar_feed_layer
         if self.parent.current_live:
             return NebulaResponse(409, "Unable to freeze live item")
         if self.paused:
@@ -319,9 +334,10 @@ class CasparController:
         result = self.query(query)
         return NebulaResponse(result.response, message)
 
-    def abort(self, **kwargs):
-        layer = kwargs.get("layer", self.caspar_feed_layer)
-        if not self.cued_item:
+    def abort(self, layer: int | None = None):
+        if layer is None:
+            layer = self.caspar_feed_layer
+        if self.cued_item is None:
             return NebulaResponse(400, "Unable to abort. No item is cued.")
         query = f"LOAD {self.caspar_channel}-{layer} {self.cued_fname}"
         if self.cued_item.mark_in():
@@ -336,7 +352,7 @@ class CasparController:
         result = self.query(query)
         return NebulaResponse(result.response, result.data)
 
-    def set(self, key, value):
+    def set(self, key: str, value: Any):
         if key == "loop":
             do_loop = int(str(value) in ["1", "True", "true"])
             result = self.query(

@@ -3,7 +3,6 @@ import telnetlib
 
 from nebula.log import log
 
-
 DELIM = b"\r\n"
 
 
@@ -58,14 +57,10 @@ class CasparCG:
                 self.host, self.port, timeout=self.timeout
             )
         except ConnectionRefusedError:
-            log.error(
-                f"Unable to connect {self}. Connection refused"
-            )
+            log.error(f"Unable to connect {self}. Connection refused")
             return False
         except socket.timeout:
-            log.error(
-                f"Unable to connect {self}. Timeout."
-            )
+            log.error(f"Unable to connect {self}. Timeout.")
             return False
         except Exception:
             log.traceback()
