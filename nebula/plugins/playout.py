@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 class PlayoutPluginSlotOption(BaseModel):
     value: str
-    label: str | None = None
+    title: str | None = None
 
 
 class PlayoutPluginSlot(BaseModel):
