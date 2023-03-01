@@ -1,3 +1,11 @@
+__version__ = "6.0.0-beta.2"
+
+import sys
+
+if "--version" in sys.argv:
+    print(__version__)
+    sys.exit(0)
+
 from nebula.config import config
 from nebula.db import DB
 from nebula.log import log
