@@ -31,8 +31,8 @@ jobs:
           cache-to: type=gha,mode=max
           push: true
           tags: |
-            nebulabroadcast/nebula-server:${{ steps.get_version.outputs.value }}
-            nebulabroadcast/nebula-server:latest
+            nebulabroadcast/nebula-worker:${{ steps.get_version.outputs.value }}
+            nebulabroadcast/nebula-worker:latest
 
       - uses: ncipollo/release-action@v1
         with:
