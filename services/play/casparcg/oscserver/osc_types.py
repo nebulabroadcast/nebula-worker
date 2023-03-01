@@ -79,7 +79,7 @@ def get_string(dgram: bytes, start_index: int) -> Tuple[str, int]:
         # do it ourselves.
         if offset > len(dgram[start_index:]):
             raise OSCParseError("Datagram is too short")
-        data_str = dgram[start_index : start_index + offset]
+        data_str = dgram[start_index : start_index + offset]  # noqa
         return data_str.replace(b"\x00", b"").decode("utf-8"), start_index + offset
     except IndexError as ie:
         raise OSCParseError("Could not parse datagram %s" % ie)
@@ -103,8 +103,9 @@ def get_int(dgram: bytes, start_index: int) -> Tuple[int, int]:
     try:
         if len(dgram[start_index:]) < _INT_DGRAM_LEN:
             raise OSCParseError("Datagram is too short")
+        dgr = dgram[start_index : start_index + _INT_DGRAM_LEN]  # noqa
         return (
-            struct.unpack(">i", dgram[start_index : start_index + _INT_DGRAM_LEN])[0],
+            struct.unpack(">i", dgr)[0],
             start_index + _INT_DGRAM_LEN,
         )
     except (struct.error, TypeError) as e:
@@ -127,10 +128,9 @@ def get_uint64(dgram: bytes, start_index: int) -> Tuple[int, int]:
     try:
         if len(dgram[start_index:]) < _UINT64_DGRAM_LEN:
             raise OSCParseError("Datagram is too short")
+        dgr = dgram[start_index : start_index + _UINT64_DGRAM_LEN]  # noqa
         return (
-            struct.unpack(">Q", dgram[start_index : start_index + _UINT64_DGRAM_LEN])[
-                0
-            ],
+            struct.unpack(">Q", dgr)[0],
             start_index + _UINT64_DGRAM_LEN,
         )
     except (struct.error, TypeError) as e:
@@ -189,8 +189,9 @@ def get_float(dgram: bytes, start_index: int) -> Tuple[float, int]:
             # the float representation complete in some cases, thus we pad here to
             # account for that.
             dgram = dgram + b"\x00" * (_FLOAT_DGRAM_LEN - len(dgram[start_index:]))
+        dgr = dgram[start_index : start_index + _FLOAT_DGRAM_LEN]  # noqa
         return (
-            struct.unpack(">f", dgram[start_index : start_index + _FLOAT_DGRAM_LEN])[0],
+            struct.unpack(">f", dgr)[0],
             start_index + _FLOAT_DGRAM_LEN,
         )
     except (struct.error, TypeError) as e:
@@ -213,10 +214,9 @@ def get_double(dgram: bytes, start_index: int) -> Tuple[float, int]:
     try:
         if len(dgram[start_index:]) < _DOUBLE_DGRAM_LEN:
             raise OSCParseError("Datagram is too short")
+        dgr = dgram[start_index : start_index + _DOUBLE_DGRAM_LEN]  # noqa
         return (
-            struct.unpack(">d", dgram[start_index : start_index + _DOUBLE_DGRAM_LEN])[
-                0
-            ],
+            struct.unpack(">d", dgr)[0],  # noqa
             start_index + _DOUBLE_DGRAM_LEN,
         )
     except (struct.error, TypeError) as e:
@@ -247,7 +247,7 @@ def get_blob(dgram: bytes, start_index: int) -> Tuple[bytes, int]:
     end_index = int_offset + size
     if end_index - start_index > len(dgram[start_index:]):
         raise OSCParseError("Datagram is too short.")
-    return dgram[int_offset : int_offset + size], int_offset + total_size
+    return dgram[int_offset : int_offset + size], int_offset + total_size  # noqa
 
 
 def get_date(dgram: bytes, start_index: int) -> Tuple[float, int]:
@@ -270,7 +270,7 @@ def get_date(dgram: bytes, start_index: int) -> Tuple[float, int]:
       ParseError if the datagram could not be parsed.
     """
     # Check for the special case first.
-    if dgram[start_index : start_index + _TIMETAG_DGRAM_LEN] == ntp.IMMEDIATELY:
+    if dgram[start_index : start_index + _TIMETAG_DGRAM_LEN] == ntp.IMMEDIATELY:  # noqa
         return IMMEDIATELY, start_index + _TIMETAG_DGRAM_LEN
     if len(dgram[start_index:]) < _TIMETAG_DGRAM_LEN:
         raise OSCParseError("Datagram is too short")
@@ -295,8 +295,9 @@ def get_rgba(dgram: bytes, start_index: int) -> Tuple[bytes, int]:
     try:
         if len(dgram[start_index:]) < _INT_DGRAM_LEN:
             raise OSCParseError("Datagram is too short")
+        dgr = dgram[start_index : start_index + _INT_DGRAM_LEN]  # noqa
         return (
-            struct.unpack(">I", dgram[start_index : start_index + _INT_DGRAM_LEN])[0],
+            struct.unpack(">I", dgr)[0],
             start_index + _INT_DGRAM_LEN,
         )
     except (struct.error, TypeError) as e:
@@ -319,7 +320,8 @@ def get_midi(dgram: bytes, start_index: int) -> Tuple[Tuple[int, int, int, int],
     try:
         if len(dgram[start_index:]) < _INT_DGRAM_LEN:
             raise OSCParseError("Datagram is too short")
-        val = struct.unpack(">I", dgram[start_index : start_index + _INT_DGRAM_LEN])[0]
+        dgr = dgram[start_index : start_index + _INT_DGRAM_LEN]  # noqa
+        val = struct.unpack(">I", dgr)[0]
         midi_msg = tuple((val & 0xFF << 8 * i) >> 8 * i for i in range(3, -1, -1))
         return (midi_msg, start_index + _INT_DGRAM_LEN)
     except (struct.error, TypeError) as e:

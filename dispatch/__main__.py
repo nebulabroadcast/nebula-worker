@@ -1,13 +1,13 @@
 import os
-import time
 import signal
 import sys
+import time
 
 import nebula
-
 from dispatch.service_monitor import ServiceMonitor
 from dispatch.storage_monitor import StorageMonitor
-from dispatch.system_monitor import SystemMonitor
+
+# from dispatch.system_monitor import SystemMonitor
 
 orig_dir = os.getcwd()
 if orig_dir != "/opt/nebula":

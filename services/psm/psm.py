@@ -3,7 +3,6 @@ import stat
 import time
 
 import nebula
-
 from nebula.base_service import BaseService
 from nebula.db import DB
 from nebula.enum import ObjectStatus

@@ -1,8 +1,8 @@
 import time
 
-import nebula
-
 from conti import CONTI_DEBUG, Conti, ContiSource
+
+import nebula
 from nebula.response import NebulaResponse
 
 CONTI_DEBUG["source"] = False

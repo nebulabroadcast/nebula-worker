@@ -1,7 +1,7 @@
 import time
-import psycopg2
-
 from urllib.parse import urlparse
+
+import psycopg2
 
 from nebula.config import config
 from nebula.log import log

@@ -1,4 +1,3 @@
-import json
 import threading
 import time
 from http.server import HTTPServer
@@ -9,12 +8,9 @@ from nebula.base_service import BaseService
 from nebula.db import DB
 from nebula.enum import ObjectStatus, RunMode
 from nebula.helpers import get_item_event, get_next_item
-from nebula.objects import Asset, Event, Item
 from nebula.response import NebulaResponse
-
 from services.play.plugins import PlayoutPlugins
 from services.play.request_handler import PlayoutRequestHandler
-
 
 DEFAULT_STATUS = {
     "status": ObjectStatus.OFFLINE,
@@ -49,8 +45,9 @@ class Service(BaseService):
 
         self.fps = float(self.channel.fps)
 
-        self.current_asset = Asset()
-        self.current_event = Event()
+        self.current_item: nebula.Item | None = None
+        self.current_asset: nebula.Asset | None = None
+        self.current_event: nebula.Event | None = None
 
         self.last_run = False
         self.last_info = 0
@@ -107,11 +104,11 @@ class Service(BaseService):
     def cue(self, **kwargs):
         db = kwargs.get("db", DB())
 
-        if "item" in kwargs and isinstance(kwargs["item"], Item):
+        if "item" in kwargs and isinstance(kwargs["item"], nebula.Item):
             item = kwargs["item"]
             del kwargs["item"]
         elif "id_item" in kwargs:
-            item = Item(int(kwargs["id_item"]), db=db)
+            item = nebula.Item(int(kwargs["id_item"]), db=db)
             item.asset
             del kwargs["id_item"]
         else:
@@ -254,31 +251,28 @@ class Service(BaseService):
 
     def plugin_list(self, **kwargs):
         result = []
-        for id_plugin, plugin in enumerate(self.plugins):
-            if not plugin.slots:
+        for plugin in self.plugins:
+            if not plugin.manifest.slots:
                 continue
-            result.append(
-                {
-                    "id": id_plugin,
-                    "title": plugin.title,
-                    "slots": plugin.slot_manifest,
-                }
-            )
-        return NebulaResponse(200, data=result)
+            result.append(plugin.manifest.dict())
+        return NebulaResponse(200, plugins=result)
 
     def plugin_exec(self, **kwargs):
-        action = kwargs.get("action_name", False)
-        data = json.loads(kwargs.get("data", "{}"))
-        id_plugin = int(kwargs["id_plugin"])
-        nebula.log.debug("Executing playout plugin:", action, id_plugin, data)
-        if not action:
-            return NebulaResponse(400, "No plugin action requested")
+        plugin_name = kwargs.get("name", None)
+        action = kwargs.get("action", None)
+        data = kwargs.get("data", None)
+
+        if not (plugin_name and action):
+            return NebulaResponse(400, "plugin or action not specified")
+
+        nebula.log.debug(f"Executing {plugin_name}.{action}")
         try:
-            plugin = self.plugins[id_plugin]
-        except (KeyError, IndexError):
+            plugin = self.plugins[plugin_name]
+        except KeyError:
             nebula.log.traceback()
-            return NebulaResponse(400, "No such action")
-        if plugin.on_command(action, **data):
+            return NebulaResponse(400, f"Plugin {plugin_name} not active")
+
+        if plugin.on_command(action, data):
             return NebulaResponse(200)
         else:
             return NebulaResponse(500, "Playout plugin failed")
@@ -287,43 +281,27 @@ class Service(BaseService):
     # Props
     #
 
-    # TODO: Find out whether this is actually needed
-    @property
-    def current_item(self):
-        return self.controller.current_item
-
     @property
     def playout_status(self):
-        return {
+        ctrl = self.controller
+        stat = {
             "id_channel": self.channel.id,
             "fps": float(self.fps),
-            "current_fname": self.controller.current_fname,
-            "cued_fname": self.controller.cued_fname,
-            "request_time": self.controller.request_time,
-            "paused": self.controller.paused,
-            "position": self.controller.position,
-            "duration": self.controller.duration,
-            # This is a transitional option. In future versions,
-            # frames will be deprecated
-            "time_unit": self.controller.time_unit,
-            "current_item": self.controller.current_item.id
-            if self.controller.current_item
-            else False,
-            "cued_item": self.controller.cued_item.id
-            if self.controller.cued_item
-            else False,
-            "current_title": self.controller.current_item["title"]
-            if self.controller.current_item
-            else "(no clip)",
-            "cued_title": self.controller.cued_item["title"]
-            if self.controller.cued_item
-            else "(no clip)",
-            "loop": self.controller.loop if hasattr(self.controller, "loop") else False,
-            "cueing": self.controller.cueing
-            if hasattr(self.controller, "cueing")
-            else False,
-            "id_event": self.current_event.id if self.current_event else False,
+            "current_fname": ctrl.current_fname,
+            "cued_fname": ctrl.cued_fname,
+            "request_time": ctrl.request_time,
+            "paused": ctrl.paused,
+            "position": ctrl.position,
+            "duration": ctrl.duration,
+            "current_item": ctrl.current_item and ctrl.current_item.id,
+            "cued_item": ctrl.cued_item and ctrl.cued_item.id,
+            "current_title": ctrl.current_item and ctrl.current_item["title"],
+            "cued_title": ctrl.cued_item and ctrl.cued_item["title"],
+            "loop": ctrl.loop,
+            "cueing": ctrl.cueing,
+            "id_event": self.current_event.id if self.current_event else None,
         }
+        return stat
 
     #
     # Events
@@ -342,16 +320,18 @@ class Service(BaseService):
             plugin.main()
 
     def on_change(self):
-        if not self.controller.current_item:
-            return
-
-        item = self.controller.current_item
         db = DB()
 
-        self.current_asset = item.asset or Asset()
-        self.current_event = item.event or Event()
+        self.current_item = self.controller.current_item
+        if self.current_item is None:
+            self.current_asset = None
+            self.current_event = None
+            return
 
-        nebula.log.info(f"Advanced to {item}")
+        self.current_asset = self.current_item.asset or None
+        self.current_event = self.current_item.event or None
+
+        nebula.log.info(f"Advanced to {self.current_item}")
 
         if self.last_run:
             db.query(
@@ -368,7 +348,7 @@ class Service(BaseService):
                 INSERT INTO asrun (id_channel, id_item, start)
                 VALUES (%s, %s, %s)
                 """,
-                [self.channel.id, item.id, time.time()],
+                [self.channel.id, self.current_item.id, time.time()],
             )
             self.last_run = db.lastid()
             db.commit()
@@ -428,7 +408,7 @@ class Service(BaseService):
         )
 
         try:
-            next_event = Event(meta=db.fetchall()[0][1], db=db)
+            next_event = nebula.Event(meta=db.fetchall()[0][1], db=db)
         except IndexError:
             self.auto_event = False
             return
@@ -498,7 +478,7 @@ class Service(BaseService):
             last_id_item, last_start = db.fetchall()[0]
         except IndexError:
             nebula.log.error("Unable to perform recovery.")
-        last_item = Item(last_id_item, db=db)
+        last_item = nebula.Item(last_id_item, db=db)
         last_item.asset
 
         self.controller.current_item = last_item

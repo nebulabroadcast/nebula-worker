@@ -129,7 +129,7 @@ class Themis(object):
         filters = []
 
         voutputs = [output.index for output in self.outputs if output.has_video]
-        aoutputs = [output.index for output in self.outputs if output.has_audio]
+        # aoutputs = [output.index for output in self.outputs if output.has_audio]
 
         if self["overlay"] and os.path.exists(str(self["overlay"])):
             splitter = "".join(["[overlay{}]".format(i) for i in voutputs])

@@ -9,7 +9,6 @@ from nxtools import xml
 
 import nebula
 
-
 orig_dir = os.getcwd()
 if orig_dir != "/opt/nebula":
     os.chdir("/opt/nebula")

@@ -1,15 +1,21 @@
 import imp
 import os
+from typing import TYPE_CHECKING
 
 import nebula
-
 from nebula.plugins import get_plugin_path
+from nebula.plugins.playout import PlayoutPlugin
+
+if TYPE_CHECKING:
+    from services.play import Service as PlayService
 
 
 class PlayoutPlugins:
-    def __init__(self, service):
+    service: "PlayService"
+    plugins: list[PlayoutPlugin] = []
+
+    def __init__(self, service: "PlayService"):
         self.service = service
-        self.plugins = []
 
     def load(self):
         self.plugins = []
@@ -36,10 +42,20 @@ class PlayoutPlugins:
                 nebula.log.error(f"No plugin class found in {plugin_file}")
                 continue
 
+            if not hasattr(py_mod.Plugin, "name"):
+                nebula.log.error("Skipping unnamed plugin")
+                continue
+
             nebula.log.info(f"Initializing plugin {plugin_name}")
             self.plugins.append(py_mod.Plugin(self.service))
             self.plugins[-1].title = self.plugins[-1].title or plugin_name.capitalize()
         nebula.log.info("All plugins initialized")
 
-    def __getitem__(self, key):
-        return self.plugins[key]
+    def __iter__(self):
+        return self.plugins.__iter__()
+
+    def __getitem__(self, name: str):
+        for plugin in self.plugins:
+            if plugin.name == name:
+                return plugin
+        raise KeyError(f"Plugin {name} not installed")

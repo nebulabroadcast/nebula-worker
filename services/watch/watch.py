@@ -2,10 +2,9 @@ import os
 import time
 from typing import TYPE_CHECKING, Generator
 
-from nxtools import get_base_name, get_files, FileObject
+from nxtools import FileObject, get_base_name, get_files
 
 import nebula
-
 from nebula.base_service import BaseService
 from nebula.db import DB
 from nebula.enum import MediaType, ObjectStatus
@@ -31,9 +30,11 @@ class Watchfolder:
         self.rel_path = settings.attrib["path"]
         self.quarantine_time = int(settings.attrib.get("quarantine_time", "10"))
         self.id_folder = int(settings.attrib.get("id_folder", 12))
-        self.recursive = settings.attrib.get("recursive", False)
-        self.hidden = settings.attrib.get("hidden", False)
-        self.case_sensitive_exts = settings.attrib.get("case_sensitive_exts", False)
+        self.recursive = bool(settings.attrib.get("recursive", False))
+        self.hidden = bool(settings.attrib.get("hidden", False))
+        self.case_sensitive_exts = bool(
+            settings.attrib.get("case_sensitive_exts", False)
+        )
 
     @property
     def storage_path(self):

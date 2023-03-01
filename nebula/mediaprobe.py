@@ -1,5 +1,6 @@
 import os
 from typing import Any
+
 from nxtools import tc2s
 from nxtools.media import ffprobe
 
@@ -102,8 +103,8 @@ def mediaprobe(source_file: str) -> dict[str, Any]:
     meta: dict[str, Any] = {"audio_tracks": []}
 
     format_info = probe_result["format"]
-    source_vdur = 0
-    source_adur = 0
+    source_vdur: float = 0
+    source_adur: float = 0
 
     # Track information
 
@@ -138,7 +139,7 @@ def mediaprobe(source_file: str) -> dict[str, Any]:
             try:
                 source_vdur = float(stream["duration"])
             except Exception:
-                source_vdur = 0
+                pass
 
             meta["video/codec"] = stream["codec_name"]
             meta["video/pixel_format"] = stream["pix_fmt"]

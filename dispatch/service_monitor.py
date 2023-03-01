@@ -4,9 +4,8 @@ import subprocess
 import time
 
 import nebula
-
-from nebula.enum import ServiceState
 from dispatch.agents import BaseAgent
+from nebula.enum import ServiceState
 
 HOSTNAME = socket.gethostname()
 
