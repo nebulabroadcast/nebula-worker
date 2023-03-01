@@ -270,7 +270,7 @@ class CasparController:
             self.cueing = False
             self.cueing_item = None
             self.cueing_time = 0
-            self.current_item = None
+            self.current_item = item
             self.current_fname = fname
         return NebulaResponse(200)
 
