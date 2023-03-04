@@ -537,10 +537,14 @@ def send_to(
                     id_action=id_action,
                     progress=0,
                 )
-                return NebulaResponse(201, message="Job restarted")
-            return NebulaResponse(200, message="Job exists. Not restarting")
+                return NebulaResponse(201, message="Job restarted", id=res[0][0])
+            return NebulaResponse(
+                200, message="Job exists. Not restarting", id=res[0][0]
+            )
         else:
-            return NebulaResponse(200, message="Job exists. Not restarting")
+            return NebulaResponse(
+                200, message="Job exists. Not restarting", id=res[0][0]
+            )
 
     #
     # Create a new job
@@ -584,4 +588,4 @@ def send_to(
         progress=0,
         message="Job created",
     )
-    return NebulaResponse(201, message="Job created")
+    return NebulaResponse(201, message="Job created", id=id_job)

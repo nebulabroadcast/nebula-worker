@@ -1,0 +1,50 @@
+
+
+PROFILES = {
+    "xdcamhd422-1080i50": {
+        "ffmpeg": [
+            "-flags",
+            "+ildct+ilme+cgop",
+            "-mpv_flags",
+            "+strict_gop",
+            "-sc_threshold", 
+            "1000000000",
+            "-top",
+            "1",
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-colorspace", 
+            "bt709",
+            "-dc",
+            "9",
+            "-intra_vlc",
+            "1",
+            "-non_linear_quant",
+            "1",
+            "-qmin",
+            "1",
+            "-qmax",
+            "3",
+            "-lmin",
+            "1*QP2LAMBDA",
+            "-g",
+            "12", 
+            "-bf", "2", 
+            "-rc_max_vbv_use",
+            "1", 
+            "-rc_min_vbv_use",
+            "1",
+            "-maxrate",
+            "50M",
+            "-vtag", 
+            "xd5e",
+            "-ar",
+            "48000",
+            "-c:a",
+            "pcm_s16le",
+        ]
+    }
+}
+
