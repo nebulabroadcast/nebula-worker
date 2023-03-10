@@ -12,3 +12,7 @@ check_version:
 
 build:
 	docker build -t nebulabroadcast/nebula-worker:latest .
+
+dist: build
+	docker push nebulabroadcast/nebula-worker:latest
+

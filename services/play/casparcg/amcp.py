@@ -3,7 +3,7 @@ import telnetlib
 
 from nebula.log import log
 
-DELIM = b"\r\n"
+DELIM = "\r\n"
 
 
 class CasparResponse:
@@ -45,7 +45,7 @@ class CasparCG:
         self.host = host
         self.port = port
         self.timeout = timeout
-        self.connection = False
+        self.connection: telnetlib.Telnet | None = None
 
     def __str__(self) -> str:
         return f"amcp://{self.host}:{self.port}"
@@ -73,16 +73,18 @@ class CasparCG:
             if not self.connect(**kwargs):
                 return CasparResponse(500, "Unable to connect CasparCG server")
 
+        assert self.connection is not None
+
         query = query.strip()
         if kwargs.get("verbose", True):
             if not query.startswith("INFO"):
                 log.debug(f"Executing AMCP: {query}")
 
-        query = bytes(query.encode("utf-8")) + DELIM
+        query_bytes = f"{query}{DELIM}".encode("utf-8")
 
         try:
-            self.connection.write(query)
-            result = self.connection.read_until(DELIM).strip()
+            self.connection.write(query_bytes)
+            result_bytes = self.connection.read_until(DELIM.encode("utf-8"))
         except ConnectionResetError:
             self.connection = None
             return CasparResponse(500, "Connection reset by peer")
@@ -90,7 +92,7 @@ class CasparCG:
             log.traceback()
             return CasparResponse(500, "Query failed")
 
-        result = result.decode("utf-8")
+        result = result_bytes.decode("utf-8").strip()
 
         if not result:
             return CasparResponse(500, "No result")
@@ -101,7 +103,8 @@ class CasparCG:
 
             elif result[:3] in ["201", "200"]:
                 stat = int(result[0:3])
-                result = self.connection.read_until(DELIM).decode("utf-8").strip()
+                result_bytes = self.connection.read_until(DELIM.encode("utf-8"))
+                result = result_bytes.decode("utf-8").strip()
                 return CasparResponse(stat, result)
 
             elif result[0] in ["3", "4", "5"]:

@@ -13,7 +13,9 @@ class Service(BaseService):
         self.actions = []
         db = DB()
         # import actions are started by the import service, not the broker
-        db.query("SELECT id, title, settings FROM actions WHERE service_type IN ('conv')")
+        db.query(
+            "SELECT id, title, settings FROM actions WHERE service_type IN ('conv')"
+        )
         for id, title, settings in db.fetchall():
             settings = xml(settings)
             self.actions.append(Action(id, title, settings))

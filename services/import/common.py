@@ -1,8 +1,9 @@
 import os
-import nebula
 
 from nxtools import FileObject, get_temp
 from pydantic import BaseModel, Field
+
+import nebula
 
 
 def create_error(import_file: FileObject, message: str):

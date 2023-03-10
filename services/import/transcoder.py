@@ -1,18 +1,19 @@
 from functools import cached_property
 from typing import Any
+
+from nxtools import ffmpeg, ffprobe
 from pydantic import BaseModel
-from nxtools import ffprobe, ffmpeg
 
 from .profiles import PROFILES
 
 
-def guess_aspect(w: int, h: int) -> float:
+def guess_aspect(w: float, h: float) -> float:
     if 0 in [w, h]:
         return 0
     valid_aspects = [(16, 9), (4, 3), (2.35, 1), (5, 4), (1, 1)]
-    ratio = float(w) / float(h)
-    n, d = min(valid_aspects, key=lambda x: abs((float(x[0]) / x[1]) - ratio))
-    return float(n) / d
+    ratio = w / h
+    n, d = min(valid_aspects, key=lambda x: abs((x[0] / x[1]) - ratio))
+    return n / d
 
 
 class BaseTrack(BaseModel):
@@ -55,7 +56,7 @@ class ImportTranscoder:
         return 100
 
     @cached_property
-    def video_track(self) -> VideoTrack:
+    def video_track(self) -> VideoTrack | None:
         for stream in self.meta["streams"]:
             if stream["codec_type"] == "video":
                 width = stream["width"]
@@ -75,12 +76,13 @@ class ImportTranscoder:
 
                 return VideoTrack(
                     faucet=f"{0}:{stream['index']}",
-                    index=len(result),
+                    index=stream["index"],
                     width=width,
                     height=height,
                     fps=fps,
                     aspect=aspect,
                 )
+        return None
 
     @cached_property
     def audio_tracks(self) -> list[AudioTrack]:
@@ -98,7 +100,7 @@ class ImportTranscoder:
         return result
 
     def create_filter_chain(self) -> str:
-        filters = []
+        filters: list[str] = []
         return ";".join(filters)
 
     def start(self, progress_handler) -> bool:
@@ -113,4 +115,6 @@ class ImportTranscoder:
         cmd.extend(params)
         cmd.append(self.target_path)
 
-        return ffmpeg(*cmd, progress_handler=lambda x: progress_handler(x / self.duration * 100))
+        return ffmpeg(
+            *cmd, progress_handler=lambda x: progress_handler(x / self.duration * 100)
+        )

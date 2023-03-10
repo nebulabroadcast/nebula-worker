@@ -1,15 +1,61 @@
 import os
 import time
-import nebula
-from nebula.jobs import send_to, Job
-from nebula.enum import ObjectStatus
+
 from nxtools import FileObject
 
-from .common import create_error, ImportDefinition
+import nebula
+from nebula.enum import ObjectStatus
+from nebula.jobs import Job, send_to
+
+from .common import ImportDefinition, create_error
 from .transcoder import ImportTranscoder
 
 
+def get_import_job(import_file, asset, action, service, db):
+    res = send_to(
+        id_asset=asset.id,
+        id_action=action.action_id,
+        id_service=service,
+        restart_existing=True,
+        db=db,
+    )
+
+    if not res:
+        create_error(import_file, f"Unable to create job for {asset}")
+        return
+
+    id_job = res.get("id")
+    if not id_job:
+        create_error(import_file, f"Unable to get job ID for {asset}")
+        return
+
+    job = Job(id_job, db=db)
+    job.set_progress(0, "Importing")
+    return job
+
+
+def ensure_target(file_path: str) -> bool:
+    """Ensure that the target file is writable."""
+    # ensure target dir exists
+    target_dir = os.path.split(file_path)[0]
+    if not os.path.isdir(target_dir):
+        try:
+            os.makedirs(target_dir)
+        except Exception:
+            nebula.log.traceback()
+            return False
+
+    # ensure target file is writable
+    if os.path.exists(file_path):
+        try:
+            _ = open(file_path, "a")
+        except Exception:
+            return False
+    return True
+
+
 def import_asset(
+    service,
     action: ImportDefinition,
     asset: nebula.Asset,
     import_file: FileObject,
@@ -33,27 +79,14 @@ def import_asset(
 
     nebula.log.info(f"Importing {import_file} to {asset}")
 
-    res = send_to(
-        id_asset=asset.id,
-        id_action=action.action_id,
-        restart_existing=True,
-        db=db,
-    )
-
-    if not res:
-        create_error(import_file, f"Unable to create job for {asset}")
-        return
-
-    id_job = res.get("id")
-    if not id_job:
-        create_error(import_file, f"Unable to get job ID for {asset}")
-        return
-
-    job = Job(id_job, db=db)
-    job.set_progress(0, "Importing")
+    job = get_import_job(import_file, asset, action, service.id_service, db)
 
     def progress_handler(progress):
-        job.set_progress(progress, "Importing")
+        job.set_progress(progress, f"Importing {progress:.02f}%")
+
+    if not ensure_target(asset.file_path):
+        job.fail("Unable to create target file")
+        return False
 
     # Get temp file path
     temp_file = os.path.join(
@@ -80,7 +113,6 @@ def import_asset(
     )
 
     result = transcoder.start(progress_handler)
-    print("RESULT", result)
 
     # Move temp file to asset file
 
@@ -119,6 +151,9 @@ def import_asset(
     #
 
     if result:
+        # Reload asset
+        asset = nebula.Asset(asset.id, db=db)
+        # Remove technical metadata
         allkeys = list(asset.meta)
         for key in allkeys:
             metatype = nebula.settings.metatypes.get(key)

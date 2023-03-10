@@ -482,6 +482,7 @@ def get_job(id_service, action_ids, db=False):
 def send_to(
     id_asset,
     id_action,
+    id_service=None,
     settings=None,
     id_user=None,
     priority=3,
@@ -515,7 +516,7 @@ def send_to(
                 f"""
                 UPDATE jobs SET
                     id_user=%s,
-                    id_service=NULL,
+                    id_service=%s,
                     message='Restart requested',
                     status=5,
                     retries=0,
@@ -526,7 +527,7 @@ def send_to(
                     AND status NOT IN ({conds})
                 RETURNING id
                 """,
-                [id_user, time.time(), res[0][0]],
+                [id_user, id_service, time.time(), res[0][0]],
             )
             db.commit()
             if db.fetchall():
@@ -555,6 +556,7 @@ def send_to(
             id_asset,
             id_action,
             id_user,
+            id_service,
             settings,
             priority,
             message,
@@ -565,12 +567,21 @@ def send_to(
             %s,
             %s,
             %s,
+            %s,
             'Pending',
             %s
         )
         RETURNING id
         """,
-        [id_asset, id_action, id_user, json.dumps(settings), priority, time.time()],
+        [
+            id_asset,
+            id_action,
+            id_user,
+            id_service,
+            json.dumps(settings),
+            priority,
+            time.time(),
+        ],
     )
 
     try:

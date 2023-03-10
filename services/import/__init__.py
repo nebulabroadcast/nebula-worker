@@ -1,13 +1,13 @@
 import os
 
-from nxtools import xml, get_files, FileObject
+from nxtools import FileObject, get_files, xml
+
 import nebula
-
-from nebula.enum import ContentType, MediaType, JobState
-from nebula.filetypes import FileTypes
 from nebula.base_service import BaseService
+from nebula.enum import ContentType, JobState, MediaType
+from nebula.filetypes import FileTypes
 
-from .common import create_error, ImportDefinition
+from .common import ImportDefinition, create_error
 from .process import import_asset
 
 
@@ -129,7 +129,7 @@ class Service(BaseService):
         if os.path.exists(asset.file_path):
             self.version_backup(asset)
 
-        import_asset(action, asset, path)
+        import_asset(self, action, asset, path)
 
         # Clean up error files
         for fname in os.listdir(action.import_dir):
@@ -142,6 +142,8 @@ class Service(BaseService):
                 os.remove(os.path.join(action.import_dir, fname))
 
     def version_backup(self, asset: nebula.Asset):
+        if asset.id is None:
+            return
         target_dir = os.path.join(
             nebula.storages[asset["id_storage"]].local_path,
             ".nx",
