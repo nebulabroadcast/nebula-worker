@@ -4,7 +4,7 @@ import time
 import vlc
 from nxtools import log_traceback, logging
 
-from nebula.core.common import NebulaResponse
+from nebula.response import NebulaResponse
 
 
 class VlcMedia:

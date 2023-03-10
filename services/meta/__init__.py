@@ -208,6 +208,8 @@ class Service(BaseService):
                     WHERE
                         id_asset=%s
                         AND status IN (1,2,3,4,6)
+                        AND id_action NOT IN
+                            (SELECT id FROM actions WHERE service_type='import')
                         {action_cond}
                     RETURNING id
                     """,

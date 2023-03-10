@@ -21,7 +21,8 @@ _NTP_DELTA = (_SYSTEM_EPOCH - _NTP_EPOCH).days * 24 * 3600
 
 
 Timestamp = collections.namedtuple(
-    typename="Timetag", field_names=("seconds", "fraction")
+    "Timestamp",
+    ("seconds", "fraction"),
 )
 
 
@@ -30,7 +31,7 @@ class NtpError(Exception):
 
 
 def parse_timestamp(timestamp: int) -> Timestamp:
-    """Parse NTP timestamp as Timetag."""
+    """Parse NTP timestamp as Timestamp."""
     seconds = timestamp >> 32
     fraction = timestamp & 0xFFFFFFFF
     return Timestamp(seconds, fraction)

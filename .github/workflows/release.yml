@@ -1,4 +1,4 @@
-name: Publish docker image
+name: Publish a new version
 
 on:
   push:
@@ -24,7 +24,8 @@ jobs:
           file: 'pyproject.toml'
           field: 'tool.poetry.version'
 
-      - uses: docker/build-push-action@v4
+      - name: Build docker image
+        uses: docker/build-push-action@v4
         with:
           context: .
           cache-from: type=gha
@@ -34,7 +35,8 @@ jobs:
             nebulabroadcast/nebula-worker:${{ steps.get_version.outputs.value }}
             nebulabroadcast/nebula-worker:latest
 
-      - uses: ncipollo/release-action@v1
+      - name: Create a release
+        uses: ncipollo/release-action@v1
         with:
           tag: v${{ steps.get_version.outputs.value }}
           name: Nebula worker ${{ steps.get_version.outputs.value }}

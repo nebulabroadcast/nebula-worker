@@ -6,7 +6,7 @@ from .defaults import default_values
 from .utils import guess_aspect, has_nvidia
 
 
-class ThemisOutput(object):
+class ThemisOutput:
     def __init__(self, parent, output_path, **kwargs):
         self.parent = parent
         self.index = len(parent.outputs)

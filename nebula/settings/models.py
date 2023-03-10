@@ -72,6 +72,13 @@ class BaseSystemSettings(SettingsModel):
         description="Allow previewing low-res proxies of assets in the UI",
     )
 
+    ui_asset_upload: bool = Field(
+        False,
+        title="Upload assets in UI",
+        description="Allow uploading asset media files in the UI "
+        "(when set to false, assets can only be uploaded via API and watch folders)",
+    )
+
 
 class SystemSettings(BaseSystemSettings):
     """System settings.
@@ -84,6 +91,8 @@ class SystemSettings(BaseSystemSettings):
     proxy_path: str = Field(".nx/proxy/{id1000:04d}/{id}.mp4")
     worker_plugin_storage: int = Field(1)
     worker_plugin_path: str = Field(".nx/plugins")
+    upload_storage: int | None = Field(None)
+    upload_dir: str | None = Field(None)
 
     smtp_host: str | None = Field(None, title="SMTP host")
     smtp_port: int | None = Field(None, title="SMTP port")
@@ -118,14 +127,16 @@ class ActionSettings(BaseActionSettings):
 
 
 class BaseServiceSettings(SettingsModel):
-    id: int = Field(...)
-    name: str = Field(...)
-    type: str = Field(...)
-    host: str = Field(...)
-    autostart: bool = Field(True)
-    loop_delay: int = Field(5)
+    id: int = Field(..., title="Service ID", example=1)
+    name: str = Field(..., title="Service name", example="conv01")
+    type: str = Field(..., title="Service type", example="conv")
+    host: str = Field(..., title="Host", example="node01")
+    autostart: bool = Field(True, title="Autostart", example=True)
+    loop_delay: int = Field(
+        5, title="Loop delay", description="Seconds of sleep between runs"
+    )
     state: ServiceState = Field(ServiceState.STOPPED)
-    last_seen: int = Field(0)
+    last_seen: int = Field(0, title="Last seen", example=1949155890)
 
 
 class ServiceSettings(BaseServiceSettings):
@@ -139,10 +150,14 @@ class ServiceSettings(BaseServiceSettings):
 
 
 class BaseStorageSettings(SettingsModel):
-    id: int = Field(...)
-    name: str = Field(...)
-    protocol: Literal["samba", "local"] = Field(...)
-    path: str = Field(...)
+    id: int = Field(..., title="Storage ID", example=1)
+    name: str = Field(..., title="Storage name", name="Production")
+    protocol: Literal["samba", "local"] = Field(
+        ...,
+        title="Connection protocol",
+        example="samba",
+    )
+    path: str = Field(..., title="Path", example="//server/share")
 
 
 class StorageSettings(BaseStorageSettings):
