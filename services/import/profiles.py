@@ -1,6 +1,13 @@
 PROFILES = {
     "xdcamhd422-1080i50": {
-        "ffmpeg": [
+        "audio_layout": "smca",
+        "video_fast_import": [{
+            "commercial_name": "XDCAM HD422",
+            "fps": 25,
+            "width": 1920,
+            "height": 1080,
+        }],
+        "video_encoding": [
             "-flags",
             "+ildct+ilme+cgop",
             "-mpv_flags",
@@ -39,10 +46,12 @@ PROFILES = {
             "50M",
             "-vtag",
             "xd5e",
+        ],
+        "audio_encoding": [
             "-ar",
             "48000",
             "-c:a",
             "pcm_s16le",
-        ]
+        ],
     },
 }

@@ -62,21 +62,6 @@ def import_asset(
 ):
     db = nebula.DB()
 
-    # for condition in parent.conditions:
-    #     value = parent.conditions[condition]
-    #     if value != probe.get(condition, None):
-    #         match = False
-    #         break
-    #
-    # if match:
-    #     logging.info(f"Fast importing {import_file} to {asset}")
-    #     try:
-    #         os.rename(import_file.path, asset.file_path)
-    #     except Exception:
-    #         log_traceback()
-    #         mk_error(import_file, "Unable to fast import. See logs.")
-    #         return False
-
     nebula.log.info(f"Importing {import_file} to {asset}")
 
     job = get_import_job(import_file, asset, action, service.id_service, db)
@@ -107,7 +92,7 @@ def import_asset(
     # Transcode
 
     transcoder = ImportTranscoder(
-        import_file,
+        import_file.path,
         temp_file,
         "xdcamhd422-1080i50",
     )
