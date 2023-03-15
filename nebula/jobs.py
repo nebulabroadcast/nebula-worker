@@ -245,7 +245,11 @@ class Job:
 
     def get_status(self):
         self.db.query("SELECT status FROM jobs WHERE id=%s", [self.id])
-        self.status = self.db.fetchall()[0][0]
+        try:
+            self.status = self.db.fetchall()[0][0]
+        except IndexError:
+            log.error(f"No such {self}")
+            return 0
         return self.status
 
     def abort(self, message="Aborted"):

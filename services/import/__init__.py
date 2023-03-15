@@ -96,7 +96,7 @@ class Service(BaseService):
 
         try:
             asset = nebula.Asset(meta=db.fetchall()[0][0])
-        except KeyError:
+        except IndexError:
             create_error(path, f"Unexpected file {path.base_name}")
             return
 
