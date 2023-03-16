@@ -37,3 +37,4 @@ class ImportDefinition(BaseModel):
     import_dir: str = Field(...)
     backup_dir: str | None = Field(None)
     identifier: str = Field("id")
+    profile: str

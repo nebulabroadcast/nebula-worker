@@ -19,6 +19,11 @@ class Service(BaseService):
 
         db = nebula.DB()
         db.query(
+            "UPDATE jobs SET status = 5 WHERE STATUS = 1 AND id_service = %s",
+            [self.id_service],
+        )
+        db.commit()
+        db.query(
             "SELECT id, title, settings FROM actions WHERE service_type = 'import'"
         )
         for id, title, settings in db.fetchall():
@@ -33,6 +38,16 @@ class Service(BaseService):
                 import_dir = action_settings.find("import_dir").text
             except AttributeError:
                 import_dir = nebula.settings.system.upload_dir
+
+            try:
+                identifier = action_settings.find("identifier").text
+            except AttributeError:
+                identifier = "id"
+
+            try:
+                profile = action_settings.find("profile").text
+            except AttributeError:
+                profile = None
 
             if not (import_storage and import_dir):
                 nebula.log.error(
@@ -51,6 +66,8 @@ class Service(BaseService):
             action = ImportDefinition(
                 action_id=id,
                 import_dir=path,
+                identifier=identifier,
+                profile=profile,
             )
             self.actions.append(action)
             nebula.log.debug(f"Import action {title} added.")

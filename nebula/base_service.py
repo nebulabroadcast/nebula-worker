@@ -14,7 +14,7 @@ class BaseService:
     id_service: int
     settings: "Element"
 
-    def __init__(self, id_service, settings=False):
+    def __init__(self, id_service, settings=None):
         log.debug(f"Initializing service ID {id_service}")
         self.id_service = id_service
         self.settings = settings

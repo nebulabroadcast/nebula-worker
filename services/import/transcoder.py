@@ -1,12 +1,12 @@
-import nebula
-import subprocess
-import os
 import json
-
+import os
+import subprocess
 from functools import cached_property
 
 from nxtools import ffmpeg
 from pydantic import BaseModel
+
+import nebula
 
 from .profiles import PROFILES
 
@@ -90,12 +90,15 @@ def mediainfo(path: str) -> MediaInfo:
 class ImportTranscoder:
     source_path: str
     target_path: str
-    profile: str
 
-    def __init__(self, source_path: str, target_path: str, profile: str):
+    def __init__(self, source_path: str, target_path: str, profile_name: str):
         self.source_path = source_path
         self.target_path = target_path
-        self.profile = profile
+        self.profile_name = profile_name
+
+    @property
+    def profile(self) -> dict:
+        return PROFILES[self.profile_name]
 
     @cached_property
     def meta(self) -> MediaInfo:
@@ -113,19 +116,20 @@ class ImportTranscoder:
     def audio_tracks(self) -> list[AudioTrack]:
         return self.meta.audio_tracks
 
-    def create_filter_chain(self) -> tuple[str, list[str]]:
-        filters: list[str] = []
+    def create_filter_chain(self) -> tuple[list[str], list[str], list[str]]:
+        video_chain: list[str] = []
+        audio_chain: list[str] = []
         mapping: list[str] = []
 
         # Video
         video_track = self.video_track
         if video_track:
-            video_filters = []
+            video_filters: list[str] = []
 
             # TODO: Video filtering
 
             if video_filters:
-                filters.append(
+                video_chain.append(
                     f"[{video_track.faucet}]{','.join(video_filters)}[video]"
                 )
                 mapping.append("[video]")
@@ -135,41 +139,43 @@ class ImportTranscoder:
         # Audio
         if len(self.audio_tracks) == 1:
             # Only one audio track
-            # Keep it intact
+            # Keep it intact - not much else we can do
             mapping.append(self.audio_tracks[0].faucet)
 
         elif len(self.audio_tracks) > 1:
-            # check whether all audio tracks are mono
             if all([track.channels == 1 for track in self.audio_tracks]):
+                # All audio tracks are mono
 
-                # for the future reference
-                if False:
-                    mapping.extend([f"{track.faucet}" for track in self.audio_tracks])
-                if "smca":
+                if self.profile.get("audio_layout") == "smca":
                     # merge all mono audio tracks into
                     # a single multi-channel audio track
                     link = ""
                     for track in self.audio_tracks:
                         link += f"[{track.faucet}]"
-                    filters.append(
+                    audio_chain.append(
                         f"{link}amerge=inputs={len(self.audio_tracks)}[audio]"
                     )
                     mapping.append("[audio]")
 
+                else:
+                    # Keep each track intact
+                    mapping.extend([f"{track.faucet}" for track in self.audio_tracks])
+
             else:
+                # Each track has different number of channels
+
                 # TODO: option to merge all audio tracks into a single track
                 # like 2xstereo -> 1x4ch etc
 
                 # For now:
-                # Each track has different number of channels
                 # Keep as is
                 for track in self.audio_tracks:
                     mapping.append(f"{track.faucet}")
 
-        return ";".join(filters), mapping
+        return video_chain, audio_chain, mapping
 
     def start(self, progress_handler) -> bool:
-        filter_chain, mapping = self.create_filter_chain()
+        video_chain, audio_chain, mapping = self.create_filter_chain()
 
         if not mapping:
             nebula.log.error("No tracks found")
@@ -177,17 +183,18 @@ class ImportTranscoder:
 
         cmd = ["-i", self.source_path]
 
+        filter_chain = ",".join(video_chain + audio_chain)
         if filter_chain:
             cmd.extend(["-filter_complex", filter_chain])
 
         for track in mapping:
             cmd.extend(["-map", track])
 
-        profile = PROFILES[self.profile]
+        # Check whether we can use fast import
 
         use_fast_import = False
-        if profile.get("video_fast_import"):
-            for fast_import_conds in profile["video_fast_import"]:
+        if self.profile.get("video_fast_import"):
+            for fast_import_conds in self.profile["video_fast_import"]:
                 for key, value in fast_import_conds.items():
                     if getattr(self.video_track, key) != value:
                         break
@@ -195,12 +202,16 @@ class ImportTranscoder:
                     use_fast_import = True
                     break
 
+        # Use fast import if possible
+
         if use_fast_import:
             cmd.extend(["-c:v", "copy"])
         else:
-            cmd.extend(profile["video_encoding"])
+            cmd.extend(self.profile["video_encoding"])
 
-        cmd.extend(profile["audio_encoding"])
+        # Audio and output
+
+        cmd.extend(self.profile["audio_encoding"])
         cmd.append(self.target_path)
 
         return ffmpeg(

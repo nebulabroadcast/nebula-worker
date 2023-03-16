@@ -94,7 +94,7 @@ def import_asset(
     transcoder = ImportTranscoder(
         import_file.path,
         temp_file,
-        "xdcamhd422-1080i50",
+        action.profile,
     )
 
     result = transcoder.start(progress_handler)

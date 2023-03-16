@@ -1,12 +1,14 @@
 PROFILES = {
     "xdcamhd422-1080i50": {
         "audio_layout": "smca",
-        "video_fast_import": [{
-            "commercial_name": "XDCAM HD422",
-            "fps": 25,
-            "width": 1920,
-            "height": 1080,
-        }],
+        "video_fast_import": [
+            {
+                "commercial_name": "XDCAM HD422",
+                "fps": 25,
+                "width": 1920,
+                "height": 1080,
+            }
+        ],
         "video_encoding": [
             "-flags",
             "+ildct+ilme+cgop",
