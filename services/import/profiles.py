@@ -10,6 +10,8 @@ PROFILES = {
             }
         ],
         "video_encoding": [
+            "-pix_fmt",
+            "yuv422p",
             "-flags",
             "+ildct+ilme+cgop",
             "-mpv_flags",
