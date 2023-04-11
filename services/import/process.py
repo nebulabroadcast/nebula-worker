@@ -65,6 +65,16 @@ def import_asset(
     nebula.log.info(f"Importing {import_file} to {asset}")
 
     job = get_import_job(import_file, asset, action, service.id_service, db)
+    db.query(
+        """
+        UPDATE jobs SET
+            start_time = %s,
+            id_service = %s
+        WHERE id = %s
+        """,
+        [time.time(), service.id, job.id],
+    )
+    db.commit()
 
     def progress_handler(progress):
         job.set_progress(progress, f"Importing {progress:.02f}%")

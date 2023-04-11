@@ -35,6 +35,10 @@ class BaseService:
             db.commit()
         log.success("Service started")
 
+    @property
+    def id(self) -> int:
+        return self.id_service
+
     def on_init(self):
         pass
 
