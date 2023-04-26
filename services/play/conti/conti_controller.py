@@ -83,6 +83,12 @@ class ContiController:
     def cue(self, item, full_path, **kwargs):
         kwargs["item"] = item
         kwargs["meta"] = item.asset.meta
+
+        if kwargs.get("mark_in") is None:
+            kwargs["mark_in"] = 0
+        if kwargs.get("mark_out") is None:
+            kwargs["mark_out"] = 0
+
         self.cued = NebulaContiSource(self.conti, full_path, **kwargs)
         # TODO: add per-source filters here
         self.cued.open()

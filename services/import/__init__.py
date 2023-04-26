@@ -1,231 +1,184 @@
 import os
 
-from nxtools import get_files, get_temp, log_traceback, logging
+from nxtools import FileObject, get_files, xml
 
+import nebula
 from nebula.base_service import BaseService
-from nebula.db import DB
-from nebula.enum import ContentType, ObjectStatus
+from nebula.enum import ContentType, JobState, MediaType
 from nebula.filetypes import FileTypes
-from nebula.mediaprobe import mediaprobe
-from nebula.objects import Asset
-from nebula.settings import settings
-from nebula.storages import storages
 
-from .themis import Themis
-
-
-def temp_file(id_storage, ext):
-    temp_dir = os.path.join(storages[id_storage].local_path, ".nx", "creating")
-    if not os.path.isdir(temp_dir):
-        try:
-            os.makedirs(temp_dir)
-        except Exception:
-            log_traceback()
-            return False
-    return get_temp(ext, temp_dir)
-
-
-def mk_error(fname, message):
-    log_file_path = os.path.splitext(fname.path)[0] + ".error.txt"
-    try:
-        old_message = open(log_file_path).read()
-    except Exception:
-        old_message = ""
-    if old_message != message:
-        logging.error("{} : {}".format(fname.base_name, message))
-        with open(log_file_path, "w") as f:
-            f.write(message)
-
-
-def version_backup(asset):
-    target_dir = os.path.join(
-        storages[asset["id_storage"]].local_path,
-        ".nx",
-        "versions",
-        f"{int(asset.id/1000):04d}",
-        f"{asset.id:d}",
-    )
-
-    ext = os.path.splitext(asset.file_path)[1]
-    target_fname = f"{asset['mtime']:d}{ext}"
-
-    if not os.path.isdir(target_dir):
-        try:
-            os.makedirs(target_dir)
-        except IOError:
-            pass
-    try:
-        os.rename(asset.file_path, os.path.join(target_dir, target_fname))
-    except IOError:
-        log_traceback()
-        logging.warning(f"Unable to create version backup of {asset}")
-
-
-def do_import(parent, import_file, asset):
-    probe = mediaprobe(import_file)
-    match = True
-    for condition in parent.conditions:
-        value = parent.conditions[condition]
-        if value != probe.get(condition, None):
-            match = False
-            break
-
-    if match:
-        logging.info(f"Fast importing {import_file} to {asset}")
-        try:
-            os.rename(import_file.path, asset.file_path)
-        except Exception:
-            log_traceback()
-            mk_error(import_file, "Unable to fast import. See logs.")
-            return False
-    else:
-        logging.info(f"Importing {import_file} to {asset}")
-
-        try:
-            themis = Themis(
-                import_file,
-                use_temp_file=False,
-            )
-        except Exception:
-            mk_error(import_file, "Import failed (Unable to read source file)")
-            return False
-
-        themis.add_output(asset.file_path, **parent.profile)
-
-        if themis.start():
-            backup_dir = os.path.join(
-                storages[parent.import_storage].local_path,
-                parent.backup_dir,
-            )
-            try:
-                if not os.path.isdir(backup_dir):
-                    os.makedirs(backup_dir)
-            except Exception:
-                logging.error("Unable to create backup directory")
-                os.remove(import_file.path)
-            else:
-                backup_path = os.path.join(
-                    backup_dir, os.path.basename(asset.file_path)
-                )
-                logging.debug(f"Creating backup of {asset} to {backup_path}")
-                if os.path.exists(backup_path):
-                    os.remove(backup_path)
-                os.rename(import_file.path, backup_path)
-            logging.goodnews(f"{asset} imported")
-        else:
-            logging.error(f"{asset} import failed")
-            mk_error(import_file, "Import failed")
-
-    allkeys = list(asset.meta)
-    for key in allkeys:
-        metatype = settings.metatypes.get(key)
-        if metatype is None or (metatype.ns in ["q", "f"]):
-            del asset.meta[key]
-    asset["status"] = ObjectStatus.CREATING
-
-    asset.save()
-
-    logging.goodnews(f"Import {asset} finished")
+from .common import ImportDefinition, create_error
+from .process import import_asset
 
 
 class Service(BaseService):
     def on_init(self):
-        # TODO: Load this from service settings
+        self.actions: list[ImportDefinition] = []
+        self.exts: list[str] = FileTypes.exts_by_type(ContentType.VIDEO)
+        self.filesizes: dict[str, int] = {}
 
-        try:
-            self.import_storage = int(self.settings.find("id_storage").text)
-            self.import_dir = self.settings.find("import_dir").text
-            self.backup_dir = self.settings.find("backup_dir").text
-        except Exception:
-            logging.error(
-                "Storage, import and backup directories "
-                "must be specified. Shutting down"
+        db = nebula.DB()
+        db.query(
+            "UPDATE jobs SET status = 5 WHERE STATUS = 1 AND id_service = %s",
+            [self.id_service],
+        )
+        db.commit()
+        db.query(
+            "SELECT id, title, settings FROM actions WHERE service_type = 'import'"
+        )
+        for id, title, settings in db.fetchall():
+            action_settings = xml(settings)
+
+            try:
+                import_storage = int(action_settings.find("id_storage").text)
+            except (AttributeError, ValueError):
+                import_storage = nebula.settings.system.upload_storage
+
+            try:
+                import_dir = action_settings.find("import_dir").text
+            except AttributeError:
+                import_dir = nebula.settings.system.upload_dir
+
+            try:
+                identifier = action_settings.find("identifier").text
+            except AttributeError:
+                identifier = "id"
+
+            try:
+                profile = action_settings.find("profile").text
+            except AttributeError:
+                profile = None
+
+            if not (import_storage and import_dir):
+                nebula.log.error(
+                    f"Import action {title} has no storage or import directory defined."
+                )
+                continue
+
+            path = os.path.join(nebula.storages[import_storage].local_path, import_dir)
+            if not os.path.isdir(path):
+                nebula.log.error(
+                    f"Import directory {path} does not exist. "
+                    f"Skipping import action {title}."
+                )
+                continue
+
+            action = ImportDefinition(
+                action_id=id,
+                import_dir=path,
+                identifier=identifier,
+                profile=profile,
             )
-            self.shutdown(True)
-
-        try:
-            self.identifier = self.settings.find("identifier").text
-        except Exception:
-            self.identifier = "id/main"
-
-        self.exts = FileTypes.exts_by_type(ContentType.VIDEO)
-        self.versioning = True
-
-        self.conditions = {}
-        conditions = self.settings.find("fast_import_conditions")
-        if conditions is not None:
-            for param in conditions.findall("param"):
-                self.conditions[param.attrib["name"]] = eval(param.text)
-
-        profile = self.settings.find("profile")
-        self.profile = {}
-        if profile is None:
-            logging.error("No profile is defined. Shutting down")
-            self.shutdown(True)
-        for param in profile.findall("param"):
-            self.profile[param.attrib["name"]] = eval(param.text)
-
-        self.filesizes = {}
-        import_storage_path = storages[self.import_storage].local_path
-        self.import_dir = os.path.join(import_storage_path, self.import_dir)
-        self.backup_dir = os.path.join(import_storage_path, self.backup_dir)
+            self.actions.append(action)
+            nebula.log.debug(f"Import action {title} added.")
 
     def on_main(self):
-        if not self.import_dir:
-            return
-
-        if not os.path.isdir(self.import_dir):
-            logging.error("Import directory does not exist. Shutting down.")
-            self.import_path = False
-            self.shutdown(no_restart=True)
-            return
-
-        db = DB()
-        for import_file in get_files(self.import_dir, exts=self.exts):
-            idec = import_file.base_name
-            try:
-                with import_file.open("rb") as f:
-                    f.seek(0, 2)
-                    fsize = f.tell()
-            except IOError:
-                logging.debug(f"Import file {import_file.base_name} is busy.")
+        for action in self.actions:
+            if not os.path.isdir(action.import_dir):
                 continue
 
-            if not (
-                import_file.path in self.filesizes
-                and self.filesizes[import_file.path] == fsize
+            for import_file in get_files(
+                action.import_dir,
+                exts=self.exts,
+                recursive=False,
             ):
-                self.filesizes[import_file.path] = fsize
-                logging.debug(f"New file '{import_file.base_name}' detected")
-                continue
-
-            db.query(
-                """
-                SELECT meta FROM assets
-                WHERE meta->>%s = %s
-                """,
-                [self.identifier, idec],
-            )
-            for (meta,) in db.fetchall():
-                asset = Asset(meta=meta, db=db)
-
-                if not (asset["id_storage"] and asset["path"]):
-                    mk_error(import_file, "This file has no target path.")
+                try:
+                    with import_file.open("rb") as f:
+                        f.seek(0, 2)
+                        fsize = f.tell()
+                except IOError:
+                    nebula.log.debug(f"Import file {import_file.base_name} is busy.")
                     continue
 
-                if self.versioning and os.path.exists(asset.file_path):
-                    version_backup(asset)
+                if not (
+                    import_file.path in self.filesizes
+                    and self.filesizes[import_file.path] == fsize
+                ):
+                    self.filesizes[import_file.path] = fsize
+                    nebula.log.debug(f"New file '{import_file.base_name}' detected")
+                    continue
 
-                do_import(self, import_file, asset)
-                break
-            else:
-                mk_error(import_file, "This file is not expected.")
+                self.import_file(action, import_file)
 
-        for fname in os.listdir(self.import_dir):
-            if not fname.endswith(".error.txt"):
+    def import_file(self, action: ImportDefinition, path: FileObject):
+        # check whether the file matches the ident in the DB
+
+        db = nebula.DB()
+        db.query(
+            f"""
+            SELECT meta FROM assets WHERE
+            meta->>'{action.identifier}' = '{path.base_name}'
+            """
+        )
+
+        try:
+            asset = nebula.Asset(meta=db.fetchall()[0][0])
+        except IndexError:
+            create_error(path, f"Unexpected file {path.base_name}")
+            return
+
+        if not (asset["id_storage"] and asset["path"]):
+            create_error(path, f"{asset} has no target path.")
+            return
+
+        if asset["media_type"] != MediaType.FILE:
+            create_error(path, f"{asset} is not a file.")
+            return
+
+        # Check whether there is unfinished job in the db
+        statuses = [JobState.PENDING, JobState.IN_PROGRESS]
+        db.query(
+            """
+            SELECT id FROM jobs WHERE
+            id_asset = %s AND
+            id_action = %s AND
+            status = ANY(%s)
+            """,
+            [asset.id, action.action_id, statuses],
+        )
+
+        if db.fetchall():
+            nebula.log.trace(f"{asset} is already being processed.")
+            return
+
+        nebula.log.info(f"Importing {asset}")
+
+        if os.path.exists(asset.file_path):
+            self.version_backup(asset)
+
+        import_asset(self, action, asset, path)
+
+        # Clean up error files
+        for fname in os.listdir(action.import_dir):
+            if not fname.endswith(".txt"):
                 continue
-            idec = fname.replace(".error.txt", "")
+            idec = os.path.splitext(fname)[0]
             if idec not in [
-                os.path.splitext(f)[0] for f in os.listdir(self.import_dir)
+                os.path.splitext(f)[0] for f in os.listdir(action.import_dir)
             ]:
-                os.remove(os.path.join(self.import_dir, fname))
+                os.remove(os.path.join(action.import_dir, fname))
+
+    def version_backup(self, asset: nebula.Asset):
+        if asset.id is None:
+            return
+        target_dir = os.path.join(
+            nebula.storages[asset["id_storage"]].local_path,
+            ".nx",
+            "versions",
+            f"{int(asset.id/1000):04d}",
+            f"{asset.id:d}",
+        )
+
+        ext = os.path.splitext(asset.file_path)[1]
+        target_fname = f"{asset.id}{asset['mtime']}{ext}"
+
+        if not os.path.isdir(target_dir):
+            try:
+                os.makedirs(target_dir)
+            except IOError:
+                pass
+        try:
+            os.rename(asset.file_path, os.path.join(target_dir, target_fname))
+        except IOError:
+            nebula.log.traceback()
+            nebula.log.warning(f"Unable to create version backup of {asset}")

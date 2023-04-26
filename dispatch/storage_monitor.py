@@ -23,13 +23,14 @@ def exec_mount(cmd: str) -> bool:
 
 
 def handle_samba_storage(storage: Storage):
-
-    if time.time() < storage.last_mount_attempt + (storage.mount_attempts * 2):
+    if time.time() - storage.last_mount_attempt < min(storage.mount_attempts * 5, 120):
         return
 
     if not os.path.exists(storage.local_path):
         try:
             os.mkdir(storage.local_path)
+        except FileExistsError:
+            pass
         except Exception:
             nebula.log.traceback(f"Unable to create mountpoint for {storage}")
             storage.last_mount_attempt = time.time()
@@ -63,19 +64,37 @@ def handle_samba_storage(storage: Storage):
         nebula.log.success(f"{storage} mounted successfully")
         storage.mount_attempts = 0
     else:
-        nebula.log.trace(cmd)
-        nebula.log.error(f"Unable to mount {storage}")
+        if storage.mount_attempts < 5:
+            nebula.log.trace(cmd)
+            nebula.log.error(f"Unable to mount {storage}")
         storage.last_mount_attempt = time.time()
         storage.mount_attempts += 1
 
 
 class StorageMonitor(BaseAgent):
+    def on_init(self):
+        self.status = {}
+
     def main(self):
         db = nebula.DB()
         db.query("SELECT id, settings FROM storages")
+        status = {}
 
         for id_storage, storage_settings in db.fetchall():
-            storage = Storage(StorageSettings(id=id_storage, **storage_settings))
+            storage = Storage(
+                StorageSettings(
+                    id=id_storage,
+                    **storage_settings,
+                    **status.get(id_storage, {}),
+                )
+            )
+
+            storage.last_mount_attempt = self.status.get(id_storage, {}).get(
+                "last_mount_attempt", 0
+            )
+            storage.mount_attempts = self.status.get(id_storage, {}).get(
+                "mount_attempts", 0
+            )
 
             if storage.is_mounted:
                 continue
@@ -84,9 +103,18 @@ class StorageMonitor(BaseAgent):
                 if not os.path.isdir(storage.path):
                     try:
                         os.makedirs(storage.path)
-                    except Exception:
+                    except FileExistsError:
                         pass
+                    except Exception:
+                        nebula.log.traceback(
+                            f"Unable to create mountpoint for {storage}"
+                        )
                 continue
 
             if storage.protocol == "samba":
                 handle_samba_storage(storage)
+
+            self.status[id_storage] = {
+                "last_mount_attempt": storage.last_mount_attempt,
+                "mount_attempts": storage.mount_attempts,
+            }

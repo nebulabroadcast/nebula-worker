@@ -14,7 +14,7 @@ class BaseService:
     id_service: int
     settings: "Element"
 
-    def __init__(self, id_service, settings=False):
+    def __init__(self, id_service, settings=None):
         log.debug(f"Initializing service ID {id_service}")
         self.id_service = id_service
         self.settings = settings
@@ -34,6 +34,10 @@ class BaseService:
             )
             db.commit()
         log.success("Service started")
+
+    @property
+    def id(self) -> int:
+        return self.id_service
 
     def on_init(self):
         pass

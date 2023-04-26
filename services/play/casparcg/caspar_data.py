@@ -71,6 +71,8 @@ class CasparChannel:
                     "foreground": CasparClip(self),
                 }
             self.layers[layer][address[3]].handle_osc(address[4:], *args)
+        elif address[0] == "output":
+            return
         else:
             print("CHAN ERR", address, args)
             return False

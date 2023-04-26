@@ -1,6 +1,7 @@
 import os
 import stat
 import time
+from typing import Any
 
 import nebula
 from nebula.base_service import BaseService
@@ -13,8 +14,13 @@ from nebula.storages import storages
 
 SCHEDULE_INTERVAL = 60
 UNSCHEDULE_INTERVAL = 86400
-DEFAULT_STATUS = {"status": ObjectStatus.OFFLINE, "size": 0, "mtime": 0, "duration": 0}
-STORAGE_STATUS = {}
+DEFAULT_STATUS: dict[str, Any] = {
+    "status": ObjectStatus.OFFLINE,
+    "size": 0,
+    "mtime": 0,
+    "duration": 0,
+}
+STORAGE_STATUS: dict[int, bool] = {}
 
 
 def get_scheduled_assets(id_channel: int, **kwargs):
