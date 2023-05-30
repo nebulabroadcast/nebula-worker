@@ -117,7 +117,7 @@ def import_asset(
         except Exception:
             nebula.log.traceback()
             job.fail("Unable to move temp file to asset file")
-            return False
+            result = False
 
     #
     # Backup the import file
@@ -132,14 +132,18 @@ def import_asset(
             os.makedirs(backup_dir)
         except Exception:
             nebula.log.traceback()
-            return False
+            result = False
 
     backup_file = os.path.join(
         backup_dir,
         f"{import_file.base_name}.{import_file.ext}",
     )
     nebula.log.info(f"Moving {import_file} to {backup_file}")
-    os.rename(import_file.path, backup_file)
+    try:
+        os.rename(import_file.path, backup_file)
+    except Exception:
+        nebula.log.traceback()
+        result = False
 
     #
     # Update asset metadata
@@ -152,9 +156,9 @@ def import_asset(
         allkeys = list(asset.meta)
         for key in allkeys:
             metatype = nebula.settings.metatypes.get(key)
-            if metatype is None or (metatype.ns in ["q", "f"]):
+            if metatype and (metatype.ns in ["q", "f"]):
                 del asset.meta[key]
-        asset["status"] = ObjectStatus.CREATING
+        asset["status"] = ObjectStatus.OFFLINE
         asset.save()
 
         job.done("Import finished")

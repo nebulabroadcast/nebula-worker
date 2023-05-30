@@ -65,8 +65,13 @@ class Service(BaseService):
             self.job.abort()
             return
 
-        progress = (position / self.job.asset["duration"]) * 100
-        self.job.set_progress(progress, f"Encoding: {progress:.02f}%")
+        try:
+            progress = (position / self.job.asset["duration"]) * 100
+            message = f"Encoding: {progress:.02f}%"
+        except ZeroDivisionError:
+            progress = 0
+            message = "Encoding. Unknown duration."
+        self.job.set_progress(progress, message)
 
     def on_main(self):
         db = DB()
