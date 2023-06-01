@@ -1,21 +1,11 @@
 import os
 
-from nxtools import FFMPEG, get_temp
+from nxtools import FFMPEG
 
 import nebula
-from nebula.response import NebulaResponse
 from nebula.storages import storages
 
-
-def temp_file(id_storage, ext):
-    temp_dir = os.path.join(storages[id_storage].local_path, ".nx", "creating")
-    if not os.path.isdir(temp_dir):
-        try:
-            os.makedirs(temp_dir)
-        except Exception:
-            nebula.log.traceback()
-            return False
-    return get_temp(ext, temp_dir)
+from .common import temp_file
 
 
 class NebulaFFMPEG:
@@ -53,9 +43,7 @@ class NebulaFFMPEG:
                         exec(p.text)
                     except Exception:
                         nebula.log.traceback()
-                        return NebulaResponse(
-                            500, message="Error in task 'pre' script."
-                        )
+                        raise RuntimeError("Error in task 'pre' script.")
 
             elif p.tag == "paramset" and eval(p.attrib["condition"]):
                 for pp in p.findall("param"):
@@ -68,7 +56,7 @@ class NebulaFFMPEG:
                 id_storage = int(eval(p.attrib["storage"]))
                 storage = storages[id_storage]
                 if not storage.is_writable:
-                    return NebulaResponse(500, message="Target storage is not writable")
+                    raise RuntimeError("Target storage is not writable")
 
                 target_rel_path = eval(p.text)
                 target_path = os.path.join(
@@ -80,18 +68,15 @@ class NebulaFFMPEG:
                 temp_path = temp_file(id_storage, temp_ext)
 
                 if not temp_path:
-                    return NebulaResponse(
-                        500, message="Unable to create temp directory"
-                    )
+                    raise RuntimeError("Unable to create temp directory")
 
                 if not os.path.isdir(target_dir):
                     try:
                         os.makedirs(target_dir)
                     except Exception:
                         nebula.log.traceback()
-                        return NebulaResponse(
-                            500,
-                            message=f"Unable to create output directory {target_dir}",  # noqa
+                        raise RuntimeError(
+                            f"Unable to create output directory {target_dir}"
                         )
 
                 if not p.attrib.get("direct", False):
@@ -99,8 +84,6 @@ class NebulaFFMPEG:
                     self.ffparams.append(temp_path)
                 else:
                     self.ffparams.append(target_path)
-
-        return NebulaResponse(200, message="Job configured")
 
     @property
     def is_running(self):
@@ -116,14 +99,20 @@ class NebulaFFMPEG:
         self.proc.stop()
 
     def wait(self, progress_handler):
-        self.proc.wait(progress_handler)
+        def position_handler(position: float):
+            duration = self.asset["duration"]
+            if not duration:
+                progress_handler(None)
+                return
+            progress = (position / duration) * 100
+            progress_handler(progress)
+
+        self.proc.wait(position_handler)
 
     def finalize(self):
         if self.proc.return_code > 0:
             nebula.log.error(self.proc.stderr.read())
-            return NebulaResponse(
-                500, message=f"Encoding failed\n{self.proc.error_log}"
-            )
+            raise RuntimeError("Encoding failed\n" + self.proc.error_log)
 
         for temp_path in self.files:
             target_path = self.files[temp_path]
@@ -131,11 +120,4 @@ class NebulaFFMPEG:
                 nebula.log.debug(f"Moving {temp_path} to {target_path}")
                 os.rename(temp_path, target_path)
             except IOError:
-                return NebulaResponse(
-                    500,
-                    message=f"""Unable to move output file
-    Source: {temp_path}
-    Target: {target_path}""",
-                )
-
-        return NebulaResponse(200, message="Task finished")
+                raise RuntimeError("Unable to move output file")
