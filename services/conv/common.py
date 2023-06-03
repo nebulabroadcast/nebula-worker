@@ -15,3 +15,6 @@ def temp_file(id_storage, ext):
             return False
     return get_temp(ext, temp_dir)
 
+
+class ConversionError(Exception):
+    pass

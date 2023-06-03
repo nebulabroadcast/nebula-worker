@@ -1,15 +1,41 @@
 import os
+import functools
+import jinja2
+import signal
 import subprocess
 
+from typing import Any
+
 import nebula
-from nebula.response import NebulaResponse
+
 from nebula.storages import storages
 
-from .common import temp_file
+
+from .common import temp_file, ConversionError
+
+
+def process_template(source_path: str, context: dict[str, Any] | None = None) -> str:
+    if context is None:
+        context = {}
+    raw_template = open(source_path).read()
+    env = jinja2.Environment()
+    template = env.from_string(raw_template)
+    return template.render(**context)
+
+
+@functools.cache
+def profiles() -> list[str]:
+    result = []
+    proc = subprocess.Popen(["melt", "-query", "profiles"], stdout=subprocess.PIPE)
+    for profile in proc.stdout:
+        if profile.startswith(b"  - "):
+            result.append(profile[4:].decode().strip())
+    proc.wait()
+    return result
 
 
 class NebulaMelt:
-    def __init__(self, asset, task, params):
+    def __init__(self, asset: nebula.Asset, task, params: dict[str, Any]):
         self.asset = asset
         self.task = task
         self.params = params
@@ -18,13 +44,31 @@ class NebulaMelt:
         self.message = "Started"
 
     def configure(self):
-        self.files = {}
-        self.cmd = ["-y"]
-        self.cmd.extend(["-i", self.asset.file_path])
         asset = self.asset
         params = self.params
         assert asset
         assert params is not None
+
+        # TODO: load this from config
+        postproc_context: dict[str, Any] | None = None
+        profile = "atsc_1080i_50"
+
+        self.files = {}
+        self.cmd = ["melt", "-progress"]
+
+        source_path = os.path.join(storages[asset.id_storage].local_path, asset.path)
+
+        if postproc_context is not None:
+            with open(self.temp_path, "w") as f:
+                f.write(process_template(source_path, postproc_context))
+            self.cmd.append(self.temp_path)
+        else:
+            self.cmd.append(source_path)
+
+        if profile is not None:
+            self.cmd.extend(["-profile", self.profile])
+
+        # self.cmd.extend(["-consumer", f"avformat:{target_path}"])
 
         for p in self.task:
             if p.tag == "param":
@@ -43,9 +87,6 @@ class NebulaMelt:
                         exec(p.text)
                     except Exception:
                         nebula.log.traceback()
-                        return NebulaResponse(
-                            500, message="Error in task 'pre' script."
-                        )
 
             elif p.tag == "paramset" and eval(p.attrib["condition"]):
                 for pp in p.findall("param"):
@@ -58,7 +99,7 @@ class NebulaMelt:
                 id_storage = int(eval(p.attrib["storage"]))
                 storage = storages[id_storage]
                 if not storage.is_writable:
-                    return NebulaResponse(500, message="Target storage is not writable")
+                    raise ConversionError("Target storage is not writable")
 
                 target_rel_path = eval(p.text)
                 target_path = os.path.join(
@@ -70,19 +111,16 @@ class NebulaMelt:
                 temp_path = temp_file(id_storage, temp_ext)
 
                 if not temp_path:
-                    return NebulaResponse(
-                        500, message="Unable to create temp directory"
-                    )
+                    raise ConversionError("Unable to create temp directory")
 
                 if not os.path.isdir(target_dir):
                     try:
                         os.makedirs(target_dir)
                     except Exception:
                         nebula.log.traceback()
-                        return NebulaResponse(
-                            500,
-                            message=f"Unable to create output directory {target_dir}",  # noqa
-                        )
+                        raise ConversionError(
+                            f"Unable to create output directory {target_dir}"
+                        )  # noqa)
 
                 if not p.attrib.get("direct", False):
                     self.files[temp_path] = target_path
@@ -90,29 +128,44 @@ class NebulaMelt:
                 else:
                     self.cmd.append(target_path)
 
-
     @property
-    def is_running(self):
-        return self.proc and self.proc.is_running
+    def is_running(self) -> bool:
+        return bool(self.proc and self.proc.is_running)
 
-    def start(self):
-        self.proc = subprocess.Popen("melt", self.cmd)
-        self.proc.start()
+    def start(self) -> None:
+        self.proc = subprocess.Popen(
+            self.cmd,
+            stderr=None,
+            stdout=subprocess.PIPE,
+            universal_newlines=True,
+        )
 
     def stop(self):
         if not self.is_running:
-            return
-        self.proc.stop()
+            return None
+        self.proc.send_signal(signal.SIGINT)
 
     def wait(self, progress_handler):
-        self.proc.wait(progress_handler)
+        buff = b""
+        while self.proc.poll() is None:
+            buff += self.proc.stderr.read(1)
+            if buff.endswith(b"\r"):
+                line = buff.decode().strip()
+                if line.startswith("Current"):
+                    progress = line.split(":")[-1].strip()
+                    if not progress.isdigit():
+                        continue
+                    progress = int(progress)
+                    print(f"Progress: {progress}%", end="\r")
+                else:
+                    print(line)
+                buff = b""
+        self.proc.wait()
 
     def finalize(self):
         if self.proc.return_code > 0:
             nebula.log.error(self.proc.stderr.read())
-            return NebulaResponse(
-                500, message=f"Encoding failed\n{self.proc.error_log}"
-            )
+            raise ConversionError("Encoding failed")
 
         for temp_path in self.files:
             target_path = self.files[temp_path]
@@ -120,12 +173,4 @@ class NebulaMelt:
                 nebula.log.debug(f"Moving {temp_path} to {target_path}")
                 os.rename(temp_path, target_path)
             except IOError:
-                return NebulaResponse(
-                    500,
-                    message=f"""Unable to move output file
-    Source: {temp_path}
-    Target: {target_path}""",
-                )
-
-        return NebulaResponse(200, message="Task finished")
-
+                raise ConversionError("Unable to move output file")
