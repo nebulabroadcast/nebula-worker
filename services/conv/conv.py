@@ -115,6 +115,7 @@ class Service(BaseService):
                 self.encoder.configure()
             except Exception as e:
                 self.job.fail(f"Failed to configure task {id_task+1}: {e}")
+                nebula.log.traceback()
                 return
 
             nebula.log.info(f"Starting task {id_task+1} of {len(tasks)}")
@@ -123,6 +124,7 @@ class Service(BaseService):
                 self.encoder.wait(self.progress_handler)
             except Exception as e:
                 self.job.fail(f"Failed to encode task {id_task+1}: {e}")
+                nebula.log.traceback()
                 return
 
             nebula.log.debug(f"Finalizing task {id_task+1} of {len(tasks)}")
@@ -130,6 +132,7 @@ class Service(BaseService):
                 self.encoder.finalize()
             except Exception as e:
                 self.job.fail(f"Failed to finalize task {id_task+1}: {e}")
+                nebula.log.traceback()
                 return
 
             job_params = self.encoder.params

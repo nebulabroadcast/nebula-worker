@@ -56,7 +56,10 @@ class NebulaMelt:
         self.files = {}
         self.cmd = ["melt", "-progress"]
 
-        source_path = os.path.join(storages[asset.id_storage].local_path, asset.path)
+        source_path = os.path.join(
+            storages[asset["id_storage"]].local_path,
+            asset["path"],
+        )
 
         if postproc_context is not None:
             with open(self.temp_path, "w") as f:
@@ -66,20 +69,14 @@ class NebulaMelt:
             self.cmd.append(source_path)
 
         if profile is not None:
-            self.cmd.extend(["-profile", self.profile])
+            self.cmd.extend(["-profile", profile])
 
-        # self.cmd.extend(["-consumer", f"avformat:{target_path}"])
-
+        enc_params: list[str] = []
         for p in self.task:
             if p.tag == "param":
+                key = p.attrib["name"]
                 value = str(eval(p.text)) if p.text else ""
-                if p.attrib["name"] == "ss":
-                    self.cmd.insert(1, "-ss")
-                    self.cmd.insert(2, value)
-                else:
-                    self.cmd.append("-" + p.attrib["name"])
-                    if value:
-                        self.cmd.append(value)
+                enc_params.append(f"{key}={value}")
 
             elif p.tag == "script":
                 if p.text:
@@ -90,10 +87,9 @@ class NebulaMelt:
 
             elif p.tag == "paramset" and eval(p.attrib["condition"]):
                 for pp in p.findall("param"):
+                    key = pp.attrib["name"]
                     value = str(eval(pp.text)) if pp.text else ""
-                    self.cmd.append("-" + pp.attrib["name"])
-                    if value:
-                        self.cmd.append(value)
+                    enc_params.append(f"{key}={value}")
 
             elif p.tag == "output":
                 id_storage = int(eval(p.attrib["storage"]))
@@ -122,11 +118,12 @@ class NebulaMelt:
                             f"Unable to create output directory {target_dir}"
                         )  # noqa)
 
-                if not p.attrib.get("direct", False):
-                    self.files[temp_path] = target_path
-                    self.cmd.append(temp_path)
+                if p.attrib.get("direct", False):
+                    self.cmd.extend(["-consumer", f"avformat:{target_path}"])
                 else:
-                    self.cmd.append(target_path)
+                    self.files[temp_path] = target_path
+                    self.cmd.extend(["-consumer", f"avformat:{temp_path}"])
+        self.cmd.extend(enc_params)
 
     @property
     def is_running(self) -> bool:
@@ -135,8 +132,8 @@ class NebulaMelt:
     def start(self) -> None:
         self.proc = subprocess.Popen(
             self.cmd,
-            stderr=None,
-            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdout=None,
             universal_newlines=True,
         )
 
@@ -146,24 +143,26 @@ class NebulaMelt:
         self.proc.send_signal(signal.SIGINT)
 
     def wait(self, progress_handler):
-        buff = b""
+        buff = ""
+        current_percent = 0
         while self.proc.poll() is None:
             buff += self.proc.stderr.read(1)
-            if buff.endswith(b"\r"):
-                line = buff.decode().strip()
+            if buff.endswith("\r") or buff.endswith("\n"):
+                line = buff.strip()
                 if line.startswith("Current"):
-                    progress = line.split(":")[-1].strip()
-                    if not progress.isdigit():
-                        continue
-                    progress = int(progress)
-                    print(f"Progress: {progress}%", end="\r")
-                else:
-                    print(line)
-                buff = b""
+                    try:
+                        progress = int(line.split(":")[-1].strip())
+                    except ValueError:
+                        pass
+                    else:
+                        if current_percent != progress:
+                            current_percent = progress
+                            progress_handler(progress)
+                buff = ""
         self.proc.wait()
 
     def finalize(self):
-        if self.proc.return_code > 0:
+        if self.proc.returncode > 0:
             nebula.log.error(self.proc.stderr.read())
             raise ConversionError("Encoding failed")
 

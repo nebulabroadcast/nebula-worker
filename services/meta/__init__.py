@@ -6,7 +6,7 @@ from nxtools import FileObject
 import nebula
 from nebula.base_service import BaseService
 from nebula.db import DB
-from nebula.enum import MediaType, ObjectStatus
+from nebula.enum import MediaType, ObjectStatus, ContentType
 from nebula.objects import Asset
 from nebula.settings import settings
 from nebula.storages import storages
@@ -49,7 +49,8 @@ class Service(BaseService):
         db.query(
             """
             SELECT id, meta FROM assets
-            WHERE media_type=%s AND status NOT IN (3, 4)
+            WHERE media_type=%s
+            AND status NOT IN (3, 4)
             """,
             [MediaType.FILE],
         )
@@ -153,8 +154,16 @@ class Service(BaseService):
                 asset["file/ctime"] = int(asset_file.ctime)
                 asset.save()
 
-                nebula.log.debug(f"{asset}: probing asset")
-                result = ffprobe_asset(asset)
+                if asset["content_type"] in (
+                    ContentType.VIDEO,
+                    ContentType.AUDIO,
+                    ContentType.IMAGE,
+                ):
+                    nebula.log.debug(f"{asset}: probing asset")
+                    result = ffprobe_asset(asset)
+                else:
+                    result = None
+
                 if result:
                     asset = result
                 elif asset["status"] != ObjectStatus.CREATING:
