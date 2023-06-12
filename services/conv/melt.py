@@ -1,17 +1,15 @@
-import os
 import functools
-import jinja2
+import os
 import signal
 import subprocess
+from typing import Any, Callable
 
-from typing import Any
+import jinja2
 
 import nebula
-
 from nebula.storages import storages
 
-
-from .common import temp_file, ConversionError
+from .common import BaseEncoder, ConversionError, temp_file
 
 
 def process_template(source_path: str, context: dict[str, Any] | None = None) -> str:
@@ -34,15 +32,7 @@ def profiles() -> list[str]:
     return result
 
 
-class NebulaMelt:
-    def __init__(self, asset: nebula.Asset, task, params: dict[str, Any]):
-        self.asset = asset
-        self.task = task
-        self.params = params
-        self.proc = None
-        self.progress = 0
-        self.message = "Started"
-
+class NebulaMelt(BaseEncoder):
     def configure(self):
         asset = self.asset
         params = self.params
@@ -51,7 +41,6 @@ class NebulaMelt:
 
         # TODO: load this from config
         postproc_context: dict[str, Any] | None = None
-        profile = "atsc_1080i_50"
 
         self.files = {}
         self.cmd = ["melt", "-progress"]
@@ -68,6 +57,7 @@ class NebulaMelt:
         else:
             self.cmd.append(source_path)
 
+        profile = self.task.attrib.get("profile", None)
         if profile is not None:
             self.cmd.extend(["-profile", profile])
 
@@ -127,7 +117,7 @@ class NebulaMelt:
 
     @property
     def is_running(self) -> bool:
-        return bool(self.proc and self.proc.is_running)
+        return bool(self.proc and self.proc.poll() is None)
 
     def start(self) -> None:
         self.proc = subprocess.Popen(
@@ -137,12 +127,12 @@ class NebulaMelt:
             universal_newlines=True,
         )
 
-    def stop(self):
+    def stop(self) -> None:
         if not self.is_running:
             return None
         self.proc.send_signal(signal.SIGINT)
 
-    def wait(self, progress_handler):
+    def wait(self, progress_handler: Callable) -> None:
         buff = ""
         current_percent = 0
         while self.proc.poll() is None:
@@ -161,7 +151,7 @@ class NebulaMelt:
                 buff = ""
         self.proc.wait()
 
-    def finalize(self):
+    def finalize(self) -> None:
         if self.proc.returncode > 0:
             nebula.log.error(self.proc.stderr.read())
             raise ConversionError("Encoding failed")

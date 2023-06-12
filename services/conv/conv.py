@@ -7,7 +7,6 @@ from nebula.base_service import BaseService
 from nebula.db import DB
 from nebula.enum import JobState
 from nebula.jobs import Action, get_job
-
 from services.conv.ffmpeg import NebulaFFMPEG
 from services.conv.melt import NebulaMelt
 
@@ -82,7 +81,7 @@ class Service(BaseService):
         )
         if not self.job:
             return
-        nebula.log.info("Got {}".format(self.job))
+        nebula.log.info(f"Got {self.job}")
 
         asset = self.job.asset
         action = self.job.action
@@ -125,6 +124,9 @@ class Service(BaseService):
             except Exception as e:
                 self.job.fail(f"Failed to encode task {id_task+1}: {e}")
                 nebula.log.traceback()
+                return
+
+            if self.encoder.aborted:
                 return
 
             nebula.log.debug(f"Finalizing task {id_task+1} of {len(tasks)}")

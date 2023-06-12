@@ -5,19 +5,11 @@ from nxtools import FFMPEG
 import nebula
 from nebula.storages import storages
 
-from .common import temp_file
+from .common import BaseEncoder, ConversionError, temp_file
 
 
-class NebulaFFMPEG:
-    def __init__(self, asset, task, params):
-        self.asset = asset
-        self.task = task
-        self.params = params
-        self.proc = None
-        self.progress = 0
-        self.message = "Started"
-
-    def configure(self):
+class NebulaFFMPEG(BaseEncoder):
+    def configure(self) -> None:
         self.files = {}
         self.ffparams = ["-y"]
         self.ffparams.extend(["-i", self.asset.file_path])
@@ -43,7 +35,7 @@ class NebulaFFMPEG:
                         exec(p.text)
                     except Exception:
                         nebula.log.traceback()
-                        raise RuntimeError("Error in task 'pre' script.")
+                        raise ConversionError("Error in task 'pre' script.")
 
             elif p.tag == "paramset" and eval(p.attrib["condition"]):
                 for pp in p.findall("param"):
@@ -56,7 +48,7 @@ class NebulaFFMPEG:
                 id_storage = int(eval(p.attrib["storage"]))
                 storage = storages[id_storage]
                 if not storage.is_writable:
-                    raise RuntimeError("Target storage is not writable")
+                    raise ConversionError("Target storage is not writable")
 
                 target_rel_path = eval(p.text)
                 target_path = os.path.join(
@@ -68,14 +60,14 @@ class NebulaFFMPEG:
                 temp_path = temp_file(id_storage, temp_ext)
 
                 if not temp_path:
-                    raise RuntimeError("Unable to create temp directory")
+                    raise ConversionError("Unable to create temp directory")
 
                 if not os.path.isdir(target_dir):
                     try:
                         os.makedirs(target_dir)
                     except Exception:
                         nebula.log.traceback()
-                        raise RuntimeError(
+                        raise ConversionError(
                             f"Unable to create output directory {target_dir}"
                         )
 
@@ -86,19 +78,20 @@ class NebulaFFMPEG:
                     self.ffparams.append(target_path)
 
     @property
-    def is_running(self):
+    def is_running(self) -> bool:
         return self.proc and self.proc.is_running
 
-    def start(self):
+    def start(self) -> None:
         self.proc = FFMPEG(*self.ffparams)
         self.proc.start()
 
-    def stop(self):
+    def stop(self) -> None:
         if not self.is_running:
             return
+        self.aborted = True
         self.proc.stop()
 
-    def wait(self, progress_handler):
+    def wait(self, progress_handler) -> None:
         def position_handler(position: float):
             duration = self.asset["duration"]
             if not duration:
@@ -109,15 +102,21 @@ class NebulaFFMPEG:
 
         self.proc.wait(position_handler)
 
-    def finalize(self):
+    def finalize(self) -> None:
+        if self.aborted:
+            for temp_path in self.files:
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+
         if self.proc.return_code > 0:
             nebula.log.error(self.proc.stderr.read())
-            raise RuntimeError("Encoding failed\n" + self.proc.error_log)
+            raise ConversionError("Encoding failed\n" + self.proc.error_log)
 
-        for temp_path in self.files:
-            target_path = self.files[temp_path]
+        for temp_path, target_path in self.files.items():
             try:
                 nebula.log.debug(f"Moving {temp_path} to {target_path}")
                 os.rename(temp_path, target_path)
             except IOError:
-                raise RuntimeError("Unable to move output file")
+                raise ConversionError("Unable to move output file")
