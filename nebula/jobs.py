@@ -260,7 +260,8 @@ class Job:
             UPDATE jobs SET
                 end_time=%s,
                 status=4,
-                message=%s
+                message=%s,
+                progress=0
             WHERE id=%s
             """,
             [now, message, self.id],
