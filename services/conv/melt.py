@@ -120,6 +120,7 @@ class NebulaMelt(BaseEncoder):
         return bool(self.proc and self.proc.poll() is None)
 
     def start(self) -> None:
+        nebula.log.debug(f"Executing: {' '.join(self.cmd)}")
         self.proc = subprocess.Popen(
             self.cmd,
             stderr=subprocess.PIPE,
