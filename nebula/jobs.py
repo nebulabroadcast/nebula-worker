@@ -260,7 +260,8 @@ class Job:
             UPDATE jobs SET
                 end_time=%s,
                 status=4,
-                message=%s
+                message=%s,
+                progress=0
             WHERE id=%s
             """,
             [now, message, self.id],
@@ -377,10 +378,10 @@ def get_job(id_service, action_ids, db=False):
     running_jobs_count = {}
     db.query(
         """
-        select id_action, count(id)
-        from jobs
-        where status=1
-        group by id_action
+        SELECT id_action, COUNT(id)
+        FROM jobs
+        WHERE status=1
+        GROUP by id_action
         """
     )
     for id_action, cnt in db.fetchall():
@@ -425,6 +426,14 @@ def get_job(id_service, action_ids, db=False):
         job.retries = retries
         job.id_user = id_user
 
+        #
+        # Limit max running jobs
+        #
+        # This is used for example for playout jobs - multiple
+        # running jobs at once may cause storage performance issues
+        # and dropped frames
+        #
+
         max_running_jobs = action.settings.attrib.get("max_jobs", 0)
         try:
             max_running_jobs = int(max_running_jobs)
@@ -434,6 +443,36 @@ def get_job(id_service, action_ids, db=False):
             running_jobs = running_jobs_count.get(id_action, 0)
             if running_jobs >= max_running_jobs:
                 continue  # Maximum allowed jobs already running. skip
+
+        #
+        # Limit using run_on whitelist
+        #
+        # This is used to allow action to run only on specific services
+        # (for example, only on services running on hosts with specific hardware)
+        #
+        # Usage:
+        # Add `run_on` tag to action settings with comma-separated list of
+        # service IDs. For example:
+        #
+        # <run_on>1,2,3</run_on>
+        #
+
+        run_on_services: list[int] = []
+        for run_on_tag in action.settings.findall("run_on"):
+            try:
+                value = [int(r.strip()) for r in run_on_tag.text.split(",")]
+            except ValueError:
+                log.error(
+                    f"Invalid run_on value for action {action}: {run_on_tag.text}"
+                )
+            run_on_services.extend(value)
+
+        if run_on_services and (id_service not in run_on_services):
+            continue
+
+        #
+        # Pre-script filtering
+        #
 
         for pre in action.settings.findall("pre"):
             if pre.text:

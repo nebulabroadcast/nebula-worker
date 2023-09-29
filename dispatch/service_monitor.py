@@ -108,7 +108,7 @@ class ServiceMonitor(BaseAgent):
             os.path.join(nebula.config.nebula_root, "manage"),
             "run",
             str(id_service),
-            '"{}"'.format(title),
+            f'"{title}"',
         ]
 
         nebula.log.info(f"Starting service ID {id_service} ({title})")

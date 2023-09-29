@@ -60,6 +60,8 @@ Software requirements:
  - Poetry
  - FFMpeg
  - cifs-utils (for mounting SMB shares)
+ - mediainfo (used by import service)
+ - melt (optional)
 
 Installation:
 

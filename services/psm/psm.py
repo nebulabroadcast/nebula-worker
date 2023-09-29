@@ -161,6 +161,7 @@ class PlayoutStorageTool:
                     self.send_action,
                     restart_existing=True,
                     restart_running=False,
+                    priority=4,
                     db=db,
                 )
                 chtitle = self.playout_config.name

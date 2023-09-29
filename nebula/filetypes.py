@@ -49,6 +49,7 @@ class FileTypes:
         "gif": ContentType.IMAGE,
         "psd": ContentType.IMAGE,
         "xcf": ContentType.IMAGE,
+        "mlt": ContentType.PACKAGE,
     }
 
     @classmethod

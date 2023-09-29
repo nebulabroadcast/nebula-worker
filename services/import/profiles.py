@@ -10,6 +10,8 @@ PROFILES = {
             }
         ],
         "video_encoding": [
+            "-r",
+            "25",
             "-pix_fmt",
             "yuv422p",
             "-c:v",

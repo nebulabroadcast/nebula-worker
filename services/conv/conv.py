@@ -7,11 +7,15 @@ from nebula.base_service import BaseService
 from nebula.db import DB
 from nebula.enum import JobState
 from nebula.jobs import Action, get_job
-from services.conv.encoder import NebulaFFMPEG
+from services.conv.ffmpeg import NebulaFFMPEG
+from services.conv.melt import NebulaMelt
 
 FORCE_INFO_EVERY = 20
 
-available_encoders = {"ffmpeg": NebulaFFMPEG}
+available_encoders = {
+    "ffmpeg": NebulaFFMPEG,
+    "melt": NebulaMelt,
+}
 
 
 class Service(BaseService):
@@ -53,8 +57,7 @@ class Service(BaseService):
             nebula.log.info(f"Restarting job ID {id_job} (converter restarted)")
         db.commit()
 
-    def progress_handler(self, position):
-        position = float(position)
+    def progress_handler(self, progress: float | None = None):
         stat = self.job.get_status()
         if stat == JobState.RESTART:
             self.encoder.stop()
@@ -64,9 +67,12 @@ class Service(BaseService):
             self.encoder.stop()
             self.job.abort()
             return
-
-        progress = (position / self.job.asset["duration"]) * 100
-        self.job.set_progress(progress, f"Encoding: {progress:.02f}%")
+        if progress is None:
+            message = "Encoding: Unknown progress"
+            progress = 0
+        else:
+            message = f"Encoding: {progress:.02f}%"
+        self.job.set_progress(progress, message)
 
     def on_main(self):
         db = DB()
@@ -75,7 +81,7 @@ class Service(BaseService):
         )
         if not self.job:
             return
-        nebula.log.info("Got {}".format(self.job))
+        nebula.log.info(f"Got {self.job}")
 
         asset = self.job.asset
         action = self.job.action
@@ -100,29 +106,37 @@ class Service(BaseService):
                 )
                 return
 
+            self.encoder = available_encoders[using](asset, task, job_params)
+
             nebula.log.debug(f"Configuring task {id_task+1} of {len(tasks)}")
 
-            self.encoder = available_encoders[using](asset, task, job_params)
-            result = self.encoder.configure()
-
-            if not result:
-                self.job.fail(result.message, critical=True)
+            try:
+                self.encoder.configure()
+            except Exception as e:
+                self.job.fail(f"Failed to configure task {id_task+1}: {e}")
+                nebula.log.traceback()
                 return
 
             nebula.log.info(f"Starting task {id_task+1} of {len(tasks)}")
+            try:
+                self.encoder.start()
+                self.encoder.wait(self.progress_handler)
+            except Exception as e:
+                self.job.fail(f"Failed to encode task {id_task+1}: {e}")
+                nebula.log.traceback()
+                return
 
-            self.encoder.start()
-            self.encoder.wait(self.progress_handler)
-
-            if self.job.status != JobState.IN_PROGRESS:
+            if self.encoder.aborted:
                 return
 
             nebula.log.debug(f"Finalizing task {id_task+1} of {len(tasks)}")
-            result = self.encoder.finalize()
-
-            if not result:
-                self.job.fail(result.message)
+            try:
+                self.encoder.finalize()
+            except Exception as e:
+                self.job.fail(f"Failed to finalize task {id_task+1}: {e}")
+                nebula.log.traceback()
                 return
+
             job_params = self.encoder.params
 
         job = self.job  # noqa
@@ -131,7 +145,12 @@ class Service(BaseService):
         for success_script in action.settings.findall("success"):
             nebula.log.info("Executing success script")
             success_script = success_script.text
-            exec(success_script)
+            try:
+                exec(success_script)
+            except Exception:
+                nebula.log.traceback()
+                self.job.fail("Failed to execute success script")
+                return
 
         elapsed_time = time.time() - job_start_time
         duration = asset["duration"] or 1

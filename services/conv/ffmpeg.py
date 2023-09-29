@@ -1,33 +1,15 @@
 import os
 
-from nxtools import FFMPEG, get_temp
+from nxtools import FFMPEG
 
 import nebula
-from nebula.response import NebulaResponse
 from nebula.storages import storages
 
-
-def temp_file(id_storage, ext):
-    temp_dir = os.path.join(storages[id_storage].local_path, ".nx", "creating")
-    if not os.path.isdir(temp_dir):
-        try:
-            os.makedirs(temp_dir)
-        except Exception:
-            nebula.log.traceback()
-            return False
-    return get_temp(ext, temp_dir)
+from .common import BaseEncoder, ConversionError, temp_file
 
 
-class NebulaFFMPEG:
-    def __init__(self, asset, task, params):
-        self.asset = asset
-        self.task = task
-        self.params = params
-        self.proc = None
-        self.progress = 0
-        self.message = "Started"
-
-    def configure(self):
+class NebulaFFMPEG(BaseEncoder):
+    def configure(self) -> None:
         self.files = {}
         self.ffparams = ["-y"]
         self.ffparams.extend(["-i", self.asset.file_path])
@@ -53,9 +35,7 @@ class NebulaFFMPEG:
                         exec(p.text)
                     except Exception:
                         nebula.log.traceback()
-                        return NebulaResponse(
-                            500, message="Error in task 'pre' script."
-                        )
+                        raise ConversionError("Error in task 'pre' script.")
 
             elif p.tag == "paramset" and eval(p.attrib["condition"]):
                 for pp in p.findall("param"):
@@ -68,7 +48,7 @@ class NebulaFFMPEG:
                 id_storage = int(eval(p.attrib["storage"]))
                 storage = storages[id_storage]
                 if not storage.is_writable:
-                    return NebulaResponse(500, message="Target storage is not writable")
+                    raise ConversionError("Target storage is not writable")
 
                 target_rel_path = eval(p.text)
                 target_path = os.path.join(
@@ -80,18 +60,15 @@ class NebulaFFMPEG:
                 temp_path = temp_file(id_storage, temp_ext)
 
                 if not temp_path:
-                    return NebulaResponse(
-                        500, message="Unable to create temp directory"
-                    )
+                    raise ConversionError("Unable to create temp directory")
 
                 if not os.path.isdir(target_dir):
                     try:
                         os.makedirs(target_dir)
                     except Exception:
                         nebula.log.traceback()
-                        return NebulaResponse(
-                            500,
-                            message=f"Unable to create output directory {target_dir}",  # noqa
+                        raise ConversionError(
+                            f"Unable to create output directory {target_dir}"
                         )
 
                 if not p.attrib.get("direct", False):
@@ -100,42 +77,46 @@ class NebulaFFMPEG:
                 else:
                     self.ffparams.append(target_path)
 
-        return NebulaResponse(200, message="Job configured")
-
     @property
-    def is_running(self):
+    def is_running(self) -> bool:
         return self.proc and self.proc.is_running
 
-    def start(self):
+    def start(self) -> None:
         self.proc = FFMPEG(*self.ffparams)
         self.proc.start()
 
-    def stop(self):
+    def stop(self) -> None:
         if not self.is_running:
             return
+        self.aborted = True
         self.proc.stop()
 
-    def wait(self, progress_handler):
-        self.proc.wait(progress_handler)
+    def wait(self, progress_handler) -> None:
+        def position_handler(position: float):
+            duration = self.asset["duration"]
+            if not duration:
+                progress_handler(None)
+                return
+            progress = (position / duration) * 100
+            progress_handler(progress)
 
-    def finalize(self):
+        self.proc.wait(position_handler)
+
+    def finalize(self) -> None:
+        if self.aborted:
+            for temp_path in self.files:
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+
         if self.proc.return_code > 0:
             nebula.log.error(self.proc.stderr.read())
-            return NebulaResponse(
-                500, message=f"Encoding failed\n{self.proc.error_log}"
-            )
+            raise ConversionError("Encoding failed\n" + self.proc.error_log)
 
-        for temp_path in self.files:
-            target_path = self.files[temp_path]
+        for temp_path, target_path in self.files.items():
             try:
                 nebula.log.debug(f"Moving {temp_path} to {target_path}")
                 os.rename(temp_path, target_path)
             except IOError:
-                return NebulaResponse(
-                    500,
-                    message=f"""Unable to move output file
-    Source: {temp_path}
-    Target: {target_path}""",
-                )
-
-        return NebulaResponse(200, message="Task finished")
+                raise ConversionError("Unable to move output file")

@@ -1,4 +1,4 @@
-FROM nebulabroadcast/nebula-base:latest
+FROM nebulabroadcast/nebula-base:6.1
 
 ENV PYTHONBUFFERED=1
 
