@@ -79,6 +79,7 @@ class CasparChannel:
 
 class CasparOSCServer:
     def __init__(self, osc_port=5253):
+        self.first_message_arrived = False
         self.osc_port = osc_port
         self.channels = {}
         self.last_osc = time.time()
@@ -99,6 +100,9 @@ class CasparOSCServer:
         self.osc_server.shutdown()
 
     def handle_osc(self, address, *args):
+        if not self.first_message_arrived:
+            nebula.log.info("OSC connection established")
+            self.first_message_arrived = True
         if type(address) == str:
             address = address.split("/")
         if len(address) < 2:
