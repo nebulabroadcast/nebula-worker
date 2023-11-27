@@ -74,7 +74,6 @@ class CasparChannel:
         elif address[0] == "output":
             return
         else:
-            print("CHAN ERR", address, args)
             return False
 
 
