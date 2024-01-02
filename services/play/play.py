@@ -31,14 +31,29 @@ def create_controller(parent):
 
         return CasparController(parent)
 
+    elif engine == "melt":
+        from .melt.melt_controller import MeltController
+
+        return MeltController(parent)
+
+    raise ValueError(f"Unknown engine {engine}")
+
 
 class Service(BaseService):
     def on_init(self):
-        id_channel = int(self.settings.find("id_channel").text)
-        self.channel = nebula.settings.get_playout_channel(id_channel)
-
-        if self.channel is None:
+        try:
+            id_channel = int(self.settings.find("id_channel").text or 0)
+            if not id_channel:
+                raise ValueError
+        except ValueError:
             nebula.log.error("No playout channel configured")
+            self.shutdown(no_restart=True)
+            return
+
+        if channel := nebula.settings.get_playout_channel(id_channel):
+            self.channel = channel
+        else:
+            nebula.log.error(f"Cant find playout channel {id_channel}")
             self.shutdown(no_restart=True)
             return
 
@@ -57,13 +72,14 @@ class Service(BaseService):
         self.status_key = f"playout_status/{self.channel.id}"
 
         self.plugins = PlayoutPlugins(self)
-        self.controller = create_controller(self)
-        if not self.controller:
-            nebula.log.error("Invalid controller specified")
+        try:
+            self.controller = create_controller(self)
+        except Exception as e:
+            nebula.log.error(f"Unable to create controller: {e}")
             self.shutdown(no_restart=True)
             return
 
-        port = int(self.channel.controller_port)
+        port = self.channel.controller_port
         nebula.log.info(f"Using port {port} for the HTTP interface.")
 
         self.server = HTTPServer(("", port), PlayoutRequestHandler)
@@ -283,6 +299,8 @@ class Service(BaseService):
     @property
     def playout_status(self):
         ctrl = self.controller
+        if not ctrl:
+            return {}
         stat = {
             "id_channel": self.channel.id,
             "fps": float(self.fps),
@@ -481,8 +499,8 @@ class Service(BaseService):
         last_item.asset
 
         self.controller.current_item = last_item
-        self.controller.cued_item = False
-        self.controller.cued_fname = False
+        self.controller.cued_item = None
+        self.controller.cued_fname = None
 
         if last_start + last_item.duration <= time.time():
             nebula.log.info(f"Last {last_item} has been broadcasted.")
