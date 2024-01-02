@@ -9,10 +9,12 @@ from nebula.objects import Asset
 from nebula.settings import settings
 
 
-def string2cs(key, value):
+def string2cs(key: str, value: str):
     """Return a CS best matching for the given string."""
     nebula.log.info(f"Parsing {key} value {value}")
     cs = settings.metatypes[key].cs
+    if not cs:
+        return None
     vslug = slugify(value, separator=" ")
     best_match = None
     max_ratio = 0
