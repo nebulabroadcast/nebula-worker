@@ -1,17 +1,19 @@
+import os
+import threading
 import time
-import nebula
 
 from typing import Any
 
+import nebula
 from nebula.response import NebulaResponse
 
 try:
     import mlt
+
     has_mlt = True
-except ImportError, ModuleNotFoundError:
+except (ImportError, ModuleNotFoundError):
     nebula.log.error("MLT is not available")
     has_mlt = False
-
 
 
 class MeltSource:
@@ -20,18 +22,15 @@ class MeltSource:
         self.path = path
 
 
-
 class MeltController:
     time_unit = "s"
 
     def __init__(self, parent):
-
         if not has_mlt:
             raise Exception("MLT is not available")
 
         mlt.mlt_log_set_level(20)
         mlt.Factory().init()
-
 
         config = {
             "profile": "atsc_1080p_25",
@@ -46,17 +45,15 @@ class MeltController:
         self.tractor.set_track(self.playlist, 0)
         self.consumer.connect(self.tractor)
 
-
         self.parent = parent
         self.cueing = False
         self.cued: MeltSource | None = None
         self.request_time = time.time()
         self.position = self.duration = 0
 
-
     @property
     def current_item(self) -> nebula.Item | None:
-        return None # TODO
+        return None  # TODO
 
     @property
     def current_fname(self) -> str | None:
@@ -80,7 +77,7 @@ class MeltController:
 
     @property
     def paused(self) -> bool:
-        return False # TODO
+        return False  # TODO
 
     @property
     def loop(self):
@@ -135,10 +132,6 @@ class MeltController:
     def shutdown(self):
         pass
 
-
-
-
-
     # From meltdown
 
     def setup_consumer(self):
@@ -156,7 +149,6 @@ class MeltController:
         """Stop the producer (shutdown the playback)"""
         self.consumer.stop()
         self.should_run = False
-
 
     def main(self):
         # If we advanced in the playlist, remove aired clip
