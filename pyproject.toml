@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nebula-worker"
-version = "6.0.2"
+version = "6.0.3"
 description = ""
 authors = ["Nebula Broadcast <info@nebulabroadcast.com>"]
 
