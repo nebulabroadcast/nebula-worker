@@ -1,40 +1,24 @@
 import socket
 import telnetlib
+import threading
 
 from nebula.log import log
 
 DELIM = "\r\n"
 
 
-class CasparResponse:
-    """Caspar query response object"""
+class CasparException(Exception):
+    pass
 
-    def __init__(self, code: int, data: str):
-        self.code = code
-        self.data = data
+class CasparConnectionException(CasparException):
+    pass
 
-    @property
-    def response(self) -> int:
-        """AMCP response code"""
-        return self.code
+class CasparBadRequestException(CasparException):
+    pass
 
-    @property
-    def is_error(self) -> bool:
-        """Returns True if query failed"""
-        return self.code >= 400
+class CasparNotFoundException(CasparException):
+    pass
 
-    @property
-    def is_success(self) -> bool:
-        """Returns True if query succeeded"""
-        return self.code < 400
-
-    def __repr__(self) -> str:
-        if self.is_success:
-            return "<Caspar response: OK>"
-        return f"<CasparResponse: Error {self.code}>"
-
-    def __bool__(self) -> bool:
-        return self.is_success
 
 
 class CasparCG:
@@ -46,71 +30,81 @@ class CasparCG:
         self.port = port
         self.timeout = timeout
         self.connection: telnetlib.Telnet | None = None
+        self.lock = threading.Lock()
 
     def __str__(self) -> str:
         return f"amcp://{self.host}:{self.port}"
 
-    def connect(self, **kwargs) -> bool:
+    def connect(self, **kwargs) -> None:
         """Create a connection to CasparCG Server"""
         try:
             self.connection = telnetlib.Telnet(
                 self.host, self.port, timeout=self.timeout
             )
         except ConnectionRefusedError:
-            log.error(f"Unable to connect {self}. Connection refused")
-            return False
+            m = f"Unable to connect {self}. Connection refused"
+            log.error(m)
+            raise CasparConnectionException(m)
         except socket.timeout:
-            log.error(f"Unable to connect {self}. Timeout.")
-            return False
+            m = f"Unable to connect {self}. Connection timeout"
+            log.error(m)
+            raise CasparConnectionException(m)
         except Exception:
             log.traceback()
-            return False
-        return True
+            raise CasparConnectionException("Unable to connect CasparCG")
 
-    def query(self, query: str, **kwargs) -> CasparResponse:
+    def query(self, query: str, **kwargs) -> str | None:
         """Send an AMCP command"""
-        if not self.connection:
-            if not self.connect(**kwargs):
-                return CasparResponse(500, "Unable to connect CasparCG server")
+        if self.lock.locked():
+            nebula.log.trace(f"Waiting for connection unlock: {query}")
+        with self.lock: 
+            if not self.connection:
+                self.connect(**kwargs)
 
-        assert self.connection is not None
+            assert self.connection is not None
 
-        query = query.strip()
-        if kwargs.get("verbose", True):
-            if not query.startswith("INFO"):
-                log.debug(f"Executing AMCP: {query}")
+            query = query.strip()
+            if kwargs.get("verbose", True):
+                if not query.startswith("INFO"):
+                    log.debug(f"Executing AMCP: {query}")
 
-        query_bytes = f"{query}{DELIM}".encode("utf-8")
+            query_bytes = f"{query}{DELIM}".encode("utf-8")
 
-        try:
-            self.connection.write(query_bytes)
-            result_bytes = self.connection.read_until(DELIM.encode("utf-8"))
-        except ConnectionResetError:
-            self.connection = None
-            return CasparResponse(500, "Connection reset by peer")
-        except Exception:
-            log.traceback()
-            return CasparResponse(500, "Query failed")
-
-        result = result_bytes.decode("utf-8").strip()
-
-        if not result:
-            return CasparResponse(500, "No result")
-
-        try:
-            if result[:3] == "202":
-                return CasparResponse(202, "No result")
-
-            elif result[:3] in ["201", "200"]:
-                stat = int(result[0:3])
+            try:
+                self.connection.write(query_bytes)
                 result_bytes = self.connection.read_until(DELIM.encode("utf-8"))
-                result = result_bytes.decode("utf-8").strip()
-                return CasparResponse(stat, result)
+            except ConnectionResetError:
+                self.connection = None
+                raise CasparConnectionException("Caspar connection reset by peer")
+            except Exception:
+                log.traceback()
+                raise CasparConnectionException("Caspar query failed")
 
-            elif result[0] in ["3", "4", "5"]:
-                stat = int(result[0:3])
-                return CasparResponse(stat, result)
+            result = result_bytes.decode("utf-8").strip()
 
-        except Exception:
-            return CasparResponse(500, f"Malformed result: {result}")
-        return CasparResponse(500, f"Unexpected result: {result}")
+            if not result:
+                raise CasparException("No result from CasparCG")
+
+            try:
+                if result[:3] == "202":
+                    return None
+
+                elif result[:3] in ["201", "200"]:
+                    stat = int(result[0:3])
+                    result_bytes = self.connection.read_until(DELIM.encode("utf-8"))
+                    result = result_bytes.decode("utf-8").strip()
+                    return result
+
+                elif result[0] in ["3", "4", "5"]:
+                    stat = int(result[0:3])
+
+                    if result.startswith("400"):
+                        # 400 error is followed by one more line with
+                        # the original query
+                        _ = self.connection.read_until(DELIM.encode("utf-8"))
+
+                    return result
+
+            except Exception:
+                raise CasparException(f"Malformed result: {result}")
+            raise CasparException(f"Unexpected result: {result}")

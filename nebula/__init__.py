@@ -1,6 +1,6 @@
-__version__ = "6.0.2"
-
 import sys
+
+from nebula.version import __version__
 
 if "--version" in sys.argv:
     print(__version__)
