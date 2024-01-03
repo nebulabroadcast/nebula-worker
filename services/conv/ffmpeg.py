@@ -1,15 +1,24 @@
 import os
-
-from nxtools import FFMPEG
+import re
+import signal
+import subprocess
 
 import nebula
 from nebula.storages import storages
 
 from .common import BaseEncoder, ConversionError, temp_file
 
+re_position = re.compile(r"time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})\d*", re.U | re.I)
+
+
+def time2sec(search):
+    hh, mm, ss, cs = search.group(1), search.group(2), search.group(3), search.group(4)
+    return int(hh) * 3600 + int(mm) * 60 + int(ss) + int(cs) / 100.0
+
 
 class NebulaFFMPEG(BaseEncoder):
     def configure(self) -> None:
+        self.proc = None
         self.files = {}
         self.ffparams = ["-y"]
         self.ffparams.extend(["-i", self.asset.file_path])
@@ -17,6 +26,7 @@ class NebulaFFMPEG(BaseEncoder):
         params = self.params
         assert asset
         assert params is not None
+        self.error_log = ""
 
         for p in self.task:
             if p.tag == "param":
@@ -78,31 +88,69 @@ class NebulaFFMPEG(BaseEncoder):
                     self.ffparams.append(target_path)
 
     @property
-    def is_running(self) -> bool:
-        return self.proc and self.proc.is_running
+    def is_running(self):
+        return bool(self.proc) and self.proc.poll() is None
 
     def start(self) -> None:
-        self.proc = FFMPEG(*self.ffparams)
-        self.proc.start()
+        cmd = ["ffmpeg", "-hide_banner"]
+        cmd.extend(str(arg) for arg in self.ffparams)
+        nebula.log.info(f"Executing {' '.join(cmd)}")
+        self.proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
 
     def stop(self) -> None:
-        if not self.is_running:
-            return
-        self.aborted = True
-        self.proc.stop()
+        if self.proc and self.proc.poll() is None:
+            self.aborted = True
+            self.proc.send_signal(signal.SIGINT)
 
     def wait(self, progress_handler) -> None:
-        def position_handler(position: float):
-            duration = self.asset["duration"]
-            if not duration:
-                progress_handler(None)
-                return
-            progress = (position / duration) * 100
-            progress_handler(progress)
+        assert self.proc
+        assert self.proc.stderr
 
-        self.proc.wait(position_handler)
+        duration = self.asset["duration"]
+        buff = b""
+
+        while True:
+            ch = self.proc.stderr.read(1)
+            if not ch:
+                break
+            if ch in [b"\n", b"\r"]:
+                line = buff.decode("utf-8", errors="ignore").strip()
+
+                position_match = re_position.search(line)
+                if position_match:
+                    position = time2sec(position_match)
+                    if not duration:
+                        progress_handler(None)
+                    else:
+                        progress = (position / duration) * 100
+                        progress_handler(progress)
+                    self.error_log = ""
+
+                elif line == "Press [q] to stop, [?] for help":
+                    self.error_log = ""
+
+                else:
+                    self.error_log += line + "\n"
+                buff = b""
+            else:
+                buff += ch
+
+        if self.proc:
+            self.proc.wait()
+            if self.proc.stderr:
+                self.error_log += self.proc.stderr.read().decode(
+                    "utf-8", errors="ignore"
+                )
 
     def finalize(self) -> None:
+        if not self.proc:
+            return
+        assert self.proc.stderr
+
         if self.aborted:
             for temp_path in self.files:
                 try:
@@ -110,9 +158,9 @@ class NebulaFFMPEG(BaseEncoder):
                 except Exception:
                     pass
 
-        if self.proc.return_code > 0:
+        if self.proc.returncode > 0:
             nebula.log.error(self.proc.stderr.read())
-            raise ConversionError("Encoding failed\n" + self.proc.error_log)
+            raise ConversionError("Encoding failed\n" + self.error_log)
 
         for temp_path, target_path in self.files.items():
             try:

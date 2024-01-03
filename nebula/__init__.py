@@ -1,6 +1,6 @@
-__version__ = "6.0.2"
-
 import sys
+
+from nebula.version import __version__
 
 if "--version" in sys.argv:
     print(__version__)
@@ -8,7 +8,7 @@ if "--version" in sys.argv:
 
 from nebula.config import config
 from nebula.db import DB
-from nebula.log import log
+from nebula.log import log, LogLevel
 from nebula.messaging import messaging
 from nebula.objects import Asset, Bin, Event, Item, User
 from nebula.settings import load_settings, settings
@@ -32,6 +32,7 @@ assert storages
 #
 
 log.user = "nebula"
+log.level = LogLevel[config.log_level.upper()]
 load_settings()
 
 #

@@ -7,7 +7,7 @@ import nebula
 from nebula.helpers import bin_refresh
 from nebula.response import NebulaResponse
 
-from .amcp import CasparCG
+from .amcp import CasparCG, CasparException
 from .caspar_data import CasparOSCServer
 
 if TYPE_CHECKING:
@@ -48,7 +48,9 @@ class CasparController:
         self.pos: float = 0
         self.dur: float = 0
 
-        if not self.connect():
+        try:
+            self.connect()
+        except Exception:
             nebula.log.error("Unable to connect CasparCG Server. Shutting down.")
             self.parent.shutdown()
             return
@@ -256,16 +258,17 @@ class CasparController:
         self.cueing_item = item
         self.cueing_time = time.time()
 
-        result = self.query(query)
-
-        if result.is_error:
-            message = f'Unable to cue "{fname}" {result.data}'
+        try:
+            self.query(query)
+        except CasparException as e:
+            message = f'Unable to cue "{fname}" {e}'
             self.cued_item = None
             self.cued_fname = None
             self.cueing = False
             self.cueing_item = None
             self.cueing_time = 0
-            return NebulaResponse(result.response, message)
+            return NebulaResponse(500, message)
+
         if play:
             self.cueing = False
             self.cueing_item = None
@@ -277,23 +280,25 @@ class CasparController:
     def clear(self, layer: int | None = None):
         if layer is None:
             layer = self.caspar_feed_layer
-        result = self.query(f"CLEAR {self.caspar_channel}-{layer}")
-        return NebulaResponse(result.response, result.data)
+        try:
+            result = self.query(f"CLEAR {self.caspar_channel}-{layer}")
+            return NebulaResponse(200)
+        except CasparException as e:
+            return NebulaResponse(200, "Layer cleared")
 
     def take(self, layer: int | None = None):
         if layer is None:
             layer = self.caspar_feed_layer
         if not self.cued_item or self.cueing:
             return NebulaResponse(400, "Unable to take. No item is cued.")
-        result = self.query(f"PLAY {self.caspar_channel}-{layer}")
-        if result.is_success:
+        try:
+            self.query(f"PLAY {self.caspar_channel}-{layer}")
             if self.parent.current_live:
                 self.parent.on_live_leave()
-            message = "Take OK"
             self.stalled = False
-        else:
-            message = "Take failed: {result.data}"
-        return NebulaResponse(result.response, message)
+            return NebulaResponse(200, "Take OK")
+        except CasparException as e:
+            return NebulaResponse(500, f"Take failed: {e}")
 
     def retake(self, layer: int | None = None):
         if layer is None:
@@ -310,15 +315,14 @@ class CasparController:
                     * self.channel_fps
                 )
             )
-        query = f"PLAY {self.caspar_channel}-{layer} {self.current_fname} {seekparams}"
-        result = self.query(query)
-        if result.is_success:
-            message = "Retake OK"
+        try:
+            query = f"PLAY {self.caspar_channel}-{layer} {self.current_fname} {seekparams}"
+            self.query(query)
             self.stalled = False
             self.parent.cue_next()
-        else:
-            message = "Take command failed: " + result.data
-        return NebulaResponse(result.response, message)
+            return NebulaResponse(200, "Retake OK")
+        except CasparException as e:
+            message = f"Take command failed: {e}"
 
     def freeze(self, layer: int | None = None):
         if layer is None:
@@ -331,8 +335,11 @@ class CasparController:
         else:
             query = f"PAUSE {self.caspar_channel}-{layer}"
             message = "Playback paused"
-        result = self.query(query)
-        return NebulaResponse(result.response, message)
+        try:
+            self.query(query)
+        except CasparException as e:
+            return NebulaResponse(500, f"Freeze failed: {e}")
+        return NebulaResponse(200, message)
 
     def abort(self, layer: int | None = None):
         if layer is None:
@@ -349,19 +356,27 @@ class CasparController:
                 * self.channel_fps
             )
             query += f" LENGTH {length}"
-        result = self.query(query)
-        return NebulaResponse(result.response, result.data)
+        try:
+            self.query(query)
+            return NebulaResponse(200, "Clip aborted")
+        except CasparException as e:
+            return NebulaResponse(500, e)
+
 
     def set(self, key: str, value: Any):
         if key == "loop":
             do_loop = int(str(value) in ["1", "True", "true"])
-            result = self.query(
-                f"CALL {self.caspar_channel}-{self.caspar_feed_layer} LOOP {do_loop}"
-            )
+            try:
+                q = f"CALL {self.caspar_channel}-{self.caspar_feed_layer} LOOP {do_loop}"
+                self.query(q)
+            except CasparException as e:
+                return NebulaResponse(500, f"Set loop failed: {e}")
+
             if self.current_item and bool(self.current_item["loop"] != bool(do_loop)):
                 self.current_item["loop"] = bool(do_loop)
                 self.current_item.save(notify=False)
                 bin_refresh([self.current_item["id_bin"]], db=self.current_item.db)
-            return NebulaResponse(result.response, f"SET LOOP: {result.data}")
+            return NebulaResponse(200, f"SET LOOP")
+
         else:
-            return NebulaResponse(400)
+            return NebulaResponse(400, f"Unsupported SET call: {key}")
