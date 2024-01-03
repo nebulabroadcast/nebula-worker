@@ -43,6 +43,13 @@ class NebulaConfig(BaseModel):
         description="Path to the nebula root directory",
     )
 
+    log_level: Literal[
+        "trace", "debug", "info", "success", "warning", "error", "critical"
+    ] = Field(
+        "debug",
+        description="Logging level",
+    )
+
 
 def load_config() -> NebulaConfig:
     prefix = "NEBULA_"
