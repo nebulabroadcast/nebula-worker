@@ -234,7 +234,7 @@ def bin_refresh(bins, **kwargs):
     )
     if changed_events:
         log.debug(
-            f"Events changed {bins}." f"Initiator {kwargs.get('initiator', log.user)}"
+            f"Events changed {bins}.Initiator {kwargs.get('initiator', log.user)}"
         )
         messaging.send(
             "objects_changed",

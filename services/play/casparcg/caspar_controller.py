@@ -283,7 +283,7 @@ class CasparController:
         try:
             result = self.query(f"CLEAR {self.caspar_channel}-{layer}")
             return NebulaResponse(200)
-        except CasparException as e:
+        except CasparException:
             return NebulaResponse(200, "Layer cleared")
 
     def take(self, layer: int | None = None):
@@ -316,7 +316,9 @@ class CasparController:
                 )
             )
         try:
-            query = f"PLAY {self.caspar_channel}-{layer} {self.current_fname} {seekparams}"
+            query = (
+                f"PLAY {self.caspar_channel}-{layer} {self.current_fname} {seekparams}"
+            )
             self.query(query)
             self.stalled = False
             self.parent.cue_next()
@@ -362,7 +364,6 @@ class CasparController:
         except CasparException as e:
             return NebulaResponse(500, e)
 
-
     def set(self, key: str, value: Any):
         if key == "loop":
             do_loop = int(str(value) in ["1", "True", "true"])
@@ -376,7 +377,7 @@ class CasparController:
                 self.current_item["loop"] = bool(do_loop)
                 self.current_item.save(notify=False)
                 bin_refresh([self.current_item["id_bin"]], db=self.current_item.db)
-            return NebulaResponse(200, f"SET LOOP")
+            return NebulaResponse(200, "SET LOOP")
 
         else:
             return NebulaResponse(400, f"Unsupported SET call: {key}")

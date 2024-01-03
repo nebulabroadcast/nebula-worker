@@ -10,15 +10,17 @@ DELIM = "\r\n"
 class CasparException(Exception):
     pass
 
+
 class CasparConnectionException(CasparException):
     pass
+
 
 class CasparBadRequestException(CasparException):
     pass
 
+
 class CasparNotFoundException(CasparException):
     pass
-
 
 
 class CasparCG:
@@ -57,7 +59,7 @@ class CasparCG:
         """Send an AMCP command"""
         if self.lock.locked():
             nebula.log.trace(f"Waiting for connection unlock: {query}")
-        with self.lock: 
+        with self.lock:
             if not self.connection:
                 self.connect(**kwargs)
 
