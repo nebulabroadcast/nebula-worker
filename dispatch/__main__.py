@@ -30,10 +30,11 @@ class NebulaDispatch:
         signal.signal(signal.SIGTERM, self.exit_gracefully)
 
     def exit_gracefully(self, signum, frame):
+        _ = signum, frame
         self.should_run = False
 
     def __call__(self):
-        for agent_name, Agent in self.agent_list.items():
+        for Agent in self.agent_list.values():
             # env_name = f"NEBULA_DISABLE_{agent_name.upper().replace('-', '_')}"
             # if os.environ.get(env_name) or f"--disable-{agent_name}" in sys.argv:
             #     os.environ[env_name] = "1"

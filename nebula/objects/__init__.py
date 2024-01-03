@@ -78,31 +78,32 @@ class Asset(AssetMixIn, ServerObject):
             self._proxy_path = tpl.format(id1000=id1000, **self.meta)
         return self._proxy_path
 
-    def get_playout_name(self, id_channel):
+    def get_playout_name(self, id_channel: int) -> str:
+        _ = id_channel
         return f"{config.site_name}-{self.id}"
 
-    def get_playout_storage(self, id_channel):
+    def get_playout_storage(self, id_channel: int) -> int | None:
         playout_config = settings.get_playout_channel(id_channel)
-        try:
-            return playout_config.playout_storage
-        except KeyError:
+        if playout_config is None:
             return None
+        return playout_config.playout_storage
 
-    def get_playout_path(self, id_channel):
+    def get_playout_path(self, id_channel) -> str | None:
         playout_config = settings.get_playout_channel(id_channel)
+        if playout_config is None:
+            return None
+        if playout_config.playout_dir is None:
+            return None
+        playout_name = self.get_playout_name(id_channel)
         container = playout_config.playout_container
-        return os.path.join(
-            playout_config.playout_dir,
-            self.get_playout_name(id_channel) + "." + container,
-        )
+        return os.path.join(playout_config.playout_dir, f"{playout_name}.{container}")
 
-    def get_playout_full_path(self, id_channel):
+    def get_playout_full_path(self, id_channel) -> str | None:
         id_storage = self.get_playout_storage(id_channel)
-        if not id_storage:
+        playout_path = self.get_playout_path(id_channel)
+        if not (id_storage and playout_path):
             return None
-        return os.path.join(
-            storages[id_storage].local_path, self.get_playout_path(id_channel)
-        )
+        return os.path.join(storages[id_storage].local_path, playout_path)
 
 
 class Item(ItemMixIn, ServerObject):
@@ -141,7 +142,7 @@ class Bin(BinMixIn, ServerObject):
         pass
 
     @property
-    def items(self):
+    def items(self) -> list[Item]:
         if not hasattr(self, "_items"):
             if not self.id:
                 self._items = []
@@ -159,11 +160,11 @@ class Bin(BinMixIn, ServerObject):
         return self._items
 
     @items.setter
-    def items(self, value):
-        assert type(value) == list
+    def items(self, value: list[Item]):
+        assert isinstance(value, list)
         self._items = value
 
-    def append(self, item):
+    def append(self, item: Item):
         assert isinstance(item, Item)
         self._items.append(item)
 
@@ -193,7 +194,7 @@ class Bin(BinMixIn, ServerObject):
         self._items = []
 
     def save(self, **kwargs):
-        duration = 0
+        duration: float = 0
         for item in self.items:
             duration += item.duration
         if duration != self.duration:

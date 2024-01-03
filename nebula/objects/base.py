@@ -17,7 +17,7 @@ class BaseObject:
     required: list[str] = []
     defaults: dict[str, Any] = {}
 
-    def __init__(self, id=False, **kwargs):
+    def __init__(self, id: int | None = None, **kwargs):
         """Object constructor."""
         self.text_changed = self.meta_changed = False
         self.is_new = True
@@ -108,7 +108,7 @@ class BaseObject:
             assert key in self.meta, f"Unable to save {self}. {key} is required"
 
     def delete(self, **kwargs):
-        assert self.id > 0, "Unable to delete unsaved object"
+        assert self.id, "Unable to delete unsaved object"
 
     def __delitem__(self, key):
         key = key.lower().strip()
@@ -238,7 +238,7 @@ class ItemMixIn:
         pass
 
     @property
-    def duration(self):
+    def duration(self) -> float:
         """Final duration of the item"""
 
         if not self["id_asset"]:
@@ -251,7 +251,7 @@ class ItemMixIn:
         # do not use marked (asset.duration) duration here.
         # marks from items must be used
 
-        return self.asset["duration"]
+        return self.asset["duration"] or 0
 
         #
         # if self["id_asset"]:

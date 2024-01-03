@@ -2,6 +2,8 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+from typing import Any
+
 from nxtools import datestr2ts
 
 from nebula.db import DB
@@ -20,52 +22,58 @@ except ModuleNotFoundError:
     has_mistune = False
 
 
-def asset_by_path(id_storage, path, db=False):
-    id_storage = str(id_storage)
+def asset_by_path(id_storage: int, path: str, db: DB | None = None) -> Asset | None:
+    id_storage = id_storage
     path = path.replace("\\", "/")
-    if not db:
+    if db is None:
         db = DB()
     db.query(
         """
-            SELECT id, meta FROM assets
+            SELECT meta FROM assets
                 WHERE media_type = %s
                 AND meta->>'id_storage' = %s
                 AND meta->>'path' = %s
         """,
-        [MediaType.FILE, id_storage, path],
+        [MediaType.FILE, str(id_storage), path],
     )
-    for id, meta in db.fetchall():
+    for (meta,) in db.fetchall():
         return Asset(meta=meta, db=db)
-    return False
+    return None
 
 
-def asset_by_full_path(path, db=False):
-    if not db:
+def asset_by_full_path(path: str, db: DB | None = None) -> Asset | None:
+    if db is None:
         db = DB()
     for storage in storages:
         if path.startswith(storage.local_path):
-            return asset_by_path(storage.id, path.replace(storage.local_path, 1), db=db)
-    return False
+            return asset_by_path(
+                storage.id,
+                path.replace(storage.local_path, "", 1),
+                db=db,
+            )
+    return None
 
 
-def meta_exists(key, value, db=False):
-    if not db:
+def meta_exists(key: str, value: Any, db: DB | None = None) -> Asset | None:
+    if db is None:
         db = DB()
-    db.query("SELECT id, meta FROM assets WHERE meta->>%s = %s", [str(key), str(value)])
-    for _, meta in db.fetchall():
+    db.query("SELECT meta FROM assets WHERE meta->>%s = %s", [str(key), str(value)])
+    for (meta,) in db.fetchall():
         return Asset(meta=meta, db=db)
-    return False
+    return None
 
 
-def get_day_events(id_channel, date, num_days=1):
+def get_day_events(id_channel: int, date: str, num_days: int = 1):
     chconfig = settings.get_playout_channel(id_channel)
+    if chconfig is None:
+        return
 
     start_time = datestr2ts(date, *chconfig.day_start)
     end_time = start_time + (3600 * 24 * num_days)
     db = DB()
     db.query(
         """
-        SELECT id, meta
+        SELECT meta
         FROM events
         WHERE id_channel=%s
         AND start > %s
@@ -73,28 +81,29 @@ def get_day_events(id_channel, date, num_days=1):
         """,
         (id_channel, start_time, end_time),
     )
-    for _, meta in db.fetchall():
+    for (meta,) in db.fetchall():
         yield Event(meta=meta)
 
 
-def get_bin_first_item(id_bin, db=False):
+def get_bin_first_item(id_bin: int, db: DB | None = None) -> Item | None:
     if not db:
         db = DB()
     db.query(
         """
-        SELECT id, meta FROM items
+        SELECT meta FROM items
         WHERE id_bin=%s
         ORDER BY position LIMIT 1
         """,
         [id_bin],
     )
-    for _, meta in db.fetchall():
+    for (meta,) in db.fetchall():
         return Item(meta=meta, db=db)
-    return False
+    return None
 
 
-def get_item_event(id_item, **kwargs):
-    db = kwargs.get("db", DB())
+def get_item_event(id_item: int, db: DB | None = None) -> Event | None:
+    if db is None:
+        db = DB()
     playout_channel_ids = ", ".join([str(f.id) for f in settings.playout_channels])
     db.query(
         f"""
@@ -107,11 +116,17 @@ def get_item_event(id_item, **kwargs):
     )
     for _, meta in db.fetchall():
         return Event(meta=meta, db=db)
-    return False
+    return None
 
 
-def get_item_runs(id_channel, from_ts, to_ts, db=False):
-    db = db or DB()
+def get_item_runs(
+    id_channel: int,
+    from_ts: float,
+    to_ts: float,
+    db: DB | None = None,
+) -> dict[int, tuple[float, float]]:
+    if db is None:
+        db = DB()
     db.query(
         """
         SELECT id_item, start, stop
@@ -129,10 +144,10 @@ def get_item_runs(id_channel, from_ts, to_ts, db=False):
     return result
 
 
-def get_next_item(item, **kwargs):
-    db = kwargs.get("db", DB())
-    force = kwargs.get("force", False)
-    if type(item) == int and item > 0:
+def get_next_item(item: int | Item, db: DB | None = None, force: bool = False):
+    if db is None:
+        db = DB()
+    if isinstance(item, int) and item > 0:
         current_item = Item(item, db=db)
     elif isinstance(item, Item):
         current_item = item
@@ -271,8 +286,18 @@ def markdown2email(text):
         return MIMEText(text, "plain")
 
 
-def send_mail(to, subject, body, **kwargs):
-    if type(to) == str:
+def send_mail(to: str | list[str], subject: str, body: str, **kwargs):
+    try:
+        assert settings.system.smtp_host, "SMTP host not configured"
+        assert settings.system.smtp_port, "SMTP port not configured"
+        assert settings.system.smtp_user, "SMTP user not configured"
+        assert settings.system.smtp_password, "SMTP password not configured"
+        assert settings.system.mail_from, "Mail from not configured"
+    except AssertionError as e:
+        log.error(f"Mail not sent: {e}")
+        return False
+
+    if isinstance(to, str):
         to = [to]
     reply_address = kwargs.get("from", settings.system.mail_from)
 
@@ -288,6 +313,6 @@ def send_mail(to, subject, body, **kwargs):
         s = smtplib.SMTP(settings.system.smtp_host, port=25)
     else:
         s = smtplib.SMTP_SSL(settings.system.smtp_host, port=settings.system.smtp_port)
-    if settings.system.smtp_user and settings.system.smtp_pass:
-        s.login(settings.system.smtp_user, settings.system.smtp_pass)
-    s.sendmail(reply_address, [to], msg.as_string())
+    if settings.system.smtp_user and settings.system.smtp_password:
+        s.login(settings.system.smtp_user, settings.system.smtp_password)
+    s.sendmail(reply_address, to, msg.as_string())

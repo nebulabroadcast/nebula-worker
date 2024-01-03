@@ -88,7 +88,9 @@ class Storages:
         return Storage(storage_config)
 
     def __iter__(self):
-        return settings.storages.__iter__()
+        for storage_config in settings.storages:
+            yield Storage(storage_config)
+
 
 
 storages = Storages()

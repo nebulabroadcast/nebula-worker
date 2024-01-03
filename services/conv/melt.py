@@ -106,7 +106,7 @@ class NebulaMelt(BaseEncoder):
                         nebula.log.traceback()
                         raise ConversionError(
                             f"Unable to create output directory {target_dir}"
-                        )  # noqa)
+                        )
 
                 if p.attrib.get("direct", False):
                     self.cmd.extend(["-consumer", f"avformat:{target_path}"])

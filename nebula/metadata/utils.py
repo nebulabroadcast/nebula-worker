@@ -86,7 +86,7 @@ def make_cs_tree(
         return []
     items = [
         {"value": value, "title": get_cs_titles(urn, (value,), lang)[0]}
-        for value, alias in scheme.items()
+        for value in scheme.values()
     ]
     if order == "value":
         items.sort(key=lambda x: x["value"])

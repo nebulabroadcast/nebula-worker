@@ -45,7 +45,7 @@ def create_ft_index(meta):
 
 
 class ServerObject(BaseObject):
-    def __init__(self, id=False, **kwargs):
+    def __init__(self, id: int | None = None, **kwargs):
         if "db" in kwargs:
             self._db = kwargs["db"]
         super(ServerObject, self).__init__(id, **kwargs)
