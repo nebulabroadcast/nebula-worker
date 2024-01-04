@@ -43,17 +43,17 @@ class CasparCG:
             self.connection = telnetlib.Telnet(
                 self.host, self.port, timeout=self.timeout
             )
-        except ConnectionRefusedError:
+        except ConnectionRefusedError as e:
             m = f"Unable to connect {self}. Connection refused"
             log.error(m)
-            raise CasparConnectionException(m)
-        except socket.timeout:
+            raise CasparConnectionException(m) from e
+        except socket.timeout as e:
             m = f"Unable to connect {self}. Connection timeout"
             log.error(m)
-            raise CasparConnectionException(m)
-        except Exception:
+            raise CasparConnectionException(m) from e
+        except Exception as e:
             log.traceback()
-            raise CasparConnectionException("Unable to connect CasparCG")
+            raise CasparConnectionException("Unable to connect CasparCG") from e
 
     def query(self, query: str, **kwargs) -> str | None:
         """Send an AMCP command"""
@@ -75,12 +75,14 @@ class CasparCG:
             try:
                 self.connection.write(query_bytes)
                 result_bytes = self.connection.read_until(DELIM.encode("utf-8"))
-            except ConnectionResetError:
+            except ConnectionResetError as e:
                 self.connection = None
-                raise CasparConnectionException("Caspar connection reset by peer")
-            except Exception:
+                raise CasparConnectionException(
+                    "Caspar connection reset by peer"
+                ) from e
+            except Exception as e:
                 log.traceback()
-                raise CasparConnectionException("Caspar query failed")
+                raise CasparConnectionException("Caspar query failed") from e
 
             result = result_bytes.decode("utf-8").strip()
 
@@ -92,13 +94,13 @@ class CasparCG:
                     return None
 
                 elif result[:3] in ["201", "200"]:
-                    stat = int(result[0:3])
+                    # stat = int(result[0:3])
                     result_bytes = self.connection.read_until(DELIM.encode("utf-8"))
                     result = result_bytes.decode("utf-8").strip()
                     return result
 
                 elif result[0] in ["3", "4", "5"]:
-                    stat = int(result[0:3])
+                    # stat = int(result[0:3])
 
                     if result.startswith("400"):
                         # 400 error is followed by one more line with
@@ -107,6 +109,6 @@ class CasparCG:
 
                     return result
 
-            except Exception:
-                raise CasparException(f"Malformed result: {result}")
+            except Exception as e:
+                raise CasparException(f"Malformed result: {result}") from e
             raise CasparException(f"Unexpected result: {result}")

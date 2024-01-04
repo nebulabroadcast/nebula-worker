@@ -20,7 +20,7 @@ class Service(BaseService):
         rou = self.settings.attrib.get("restart_on_update", "all")
         if rou.lower() == "all":
             self.restart_on_update = "all"
-        elif all([k.strip().isdigit() for k in rou.split(",")]):
+        elif all(k.strip().isdigit() for k in rou.split(",")):
             self.restart_on_update = [int(k.strip()) for k in rou.split(",")]
         else:
             self.restart_on_update = None
@@ -48,14 +48,14 @@ class Service(BaseService):
         # do not scan trashed and archived files
         db.query(
             """
-            SELECT id, meta FROM assets
+            SELECT meta FROM assets
             WHERE media_type=%s
             AND status NOT IN (3, 4)
             """,
             [MediaType.FILE],
         )
         i = 0
-        for id, meta in db.fetchall():
+        for (meta,) in db.fetchall():
             asset = Asset(meta=meta, db=db)
             self.process(asset)
             i += 1
@@ -197,8 +197,9 @@ class Service(BaseService):
             asset.save()
 
             if self.restart_on_update and restart_actions:
-                if type(self.restart_on_update) == list:
-                    actions_to_restart = ",".join(self.restart_on_update)
+                if isinstance(self.restart_on_update, list):
+                    rou = [str(x) for x in self.restart_on_update]
+                    actions_to_restart = ",".join(rou)
                     action_cond = f"AND id_action in ({actions_to_restart})"
                 else:
                     action_cond = ""

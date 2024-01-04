@@ -25,6 +25,7 @@ def process_template(source_path: str, context: dict[str, Any] | None = None) ->
 def profiles() -> list[str]:
     result = []
     proc = subprocess.Popen(["melt", "-query", "profiles"], stdout=subprocess.PIPE)
+    assert proc.stdout
     for profile in proc.stdout:
         if profile.startswith(b"  - "):
             result.append(profile[4:].decode().strip())
@@ -102,11 +103,11 @@ class NebulaMelt(BaseEncoder):
                 if not os.path.isdir(target_dir):
                     try:
                         os.makedirs(target_dir)
-                    except Exception:
+                    except Exception as e:
                         nebula.log.traceback()
                         raise ConversionError(
                             f"Unable to create output directory {target_dir}"
-                        )
+                        ) from e
 
                 if p.attrib.get("direct", False):
                     self.cmd.extend(["-consumer", f"avformat:{target_path}"])
@@ -136,6 +137,7 @@ class NebulaMelt(BaseEncoder):
     def wait(self, progress_handler: Callable) -> None:
         buff = ""
         current_percent = 0
+        assert self.proc.stderr
         while self.proc.poll() is None:
             buff += self.proc.stderr.read(1)
             if buff.endswith("\r") or buff.endswith("\n"):
@@ -153,6 +155,7 @@ class NebulaMelt(BaseEncoder):
         self.proc.wait()
 
     def finalize(self) -> None:
+        assert self.proc.stderr
         if self.proc.returncode > 0:
             nebula.log.error(self.proc.stderr.read())
             raise ConversionError("Encoding failed")
@@ -162,5 +165,5 @@ class NebulaMelt(BaseEncoder):
             try:
                 nebula.log.debug(f"Moving {temp_path} to {target_path}")
                 os.rename(temp_path, target_path)
-            except IOError:
-                raise ConversionError("Unable to move output file")
+            except IOError as e:
+                raise ConversionError("Unable to move output file") from e

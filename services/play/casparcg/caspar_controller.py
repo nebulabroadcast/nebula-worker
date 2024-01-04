@@ -281,7 +281,7 @@ class CasparController:
         if layer is None:
             layer = self.caspar_feed_layer
         try:
-            result = self.query(f"CLEAR {self.caspar_channel}-{layer}")
+            self.query(f"CLEAR {self.caspar_channel}-{layer}")
             return NebulaResponse(200)
         except CasparException:
             return NebulaResponse(200, "Layer cleared")
@@ -325,6 +325,7 @@ class CasparController:
             return NebulaResponse(200, "Retake OK")
         except CasparException as e:
             message = f"Take command failed: {e}"
+            return NebulaResponse(500, message)
 
     def freeze(self, layer: int | None = None):
         if layer is None:

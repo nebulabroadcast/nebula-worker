@@ -53,7 +53,7 @@ def mediainfo(path: str) -> MediaInfo:
         result = subprocess.check_output(command)
         data = json.loads(result)
     except Exception as e:
-        raise Exception(f"Error while running {command}: {e}")
+        raise Exception(f"Error while running {command}: {e}") from e
 
     audio_tracks = []
     duration = 0.0
@@ -143,7 +143,7 @@ class ImportTranscoder:
             mapping.append(self.audio_tracks[0].faucet)
 
         elif len(self.audio_tracks) > 1:
-            if all([track.channels == 1 for track in self.audio_tracks]):
+            if all(track.channels == 1 for track in self.audio_tracks):
                 # All audio tracks are mono
 
                 if self.profile.get("audio_layout") == "smca":

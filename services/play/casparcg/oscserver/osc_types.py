@@ -82,9 +82,9 @@ def get_string(dgram: bytes, start_index: int) -> Tuple[str, int]:
         data_str = dgram[start_index : start_index + offset]  # noqa
         return data_str.replace(b"\x00", b"").decode("utf-8"), start_index + offset
     except IndexError as ie:
-        raise OSCParseError("Could not parse datagram %s" % ie)
+        raise OSCParseError("Could not parse datagram %s" % ie) from ie
     except TypeError as te:
-        raise OSCParseError("Could not parse datagram %s" % te)
+        raise OSCParseError("Could not parse datagram %s" % te) from te
 
 
 def get_int(dgram: bytes, start_index: int) -> Tuple[int, int]:
@@ -109,7 +109,7 @@ def get_int(dgram: bytes, start_index: int) -> Tuple[int, int]:
             start_index + _INT_DGRAM_LEN,
         )
     except (struct.error, TypeError) as e:
-        raise OSCParseError("Could not parse datagram %s" % e)
+        raise OSCParseError("Could not parse datagram %s" % e) from e
 
 
 def get_uint64(dgram: bytes, start_index: int) -> Tuple[int, int]:
@@ -134,7 +134,7 @@ def get_uint64(dgram: bytes, start_index: int) -> Tuple[int, int]:
             start_index + _UINT64_DGRAM_LEN,
         )
     except (struct.error, TypeError) as e:
-        raise OSCParseError("Could not parse datagram %s" % e)
+        raise OSCParseError("Could not parse datagram %s" % e) from e
 
 
 def get_timetag(dgram: bytes, start_index: int) -> Tuple[datetime, int]:
@@ -167,7 +167,7 @@ def get_timetag(dgram: bytes, start_index: int) -> Tuple[datetime, int]:
 
         return (utc, fraction), start_index + _TIMETAG_DGRAM_LEN
     except (struct.error, TypeError) as e:
-        raise OSCParseError("Could not parse datagram %s" % e)
+        raise OSCParseError("Could not parse datagram %s" % e) from e
 
 
 def get_float(dgram: bytes, start_index: int) -> Tuple[float, int]:
@@ -195,7 +195,7 @@ def get_float(dgram: bytes, start_index: int) -> Tuple[float, int]:
             start_index + _FLOAT_DGRAM_LEN,
         )
     except (struct.error, TypeError) as e:
-        raise OSCParseError("Could not parse datagram %s" % e)
+        raise OSCParseError("Could not parse datagram %s" % e) from e
 
 
 def get_double(dgram: bytes, start_index: int) -> Tuple[float, int]:
@@ -220,7 +220,7 @@ def get_double(dgram: bytes, start_index: int) -> Tuple[float, int]:
             start_index + _DOUBLE_DGRAM_LEN,
         )
     except (struct.error, TypeError) as e:
-        raise OSCParseError("Could not parse datagram {}".format(e))
+        raise OSCParseError("Could not parse datagram {}".format(e)) from e
 
 
 def get_blob(dgram: bytes, start_index: int) -> Tuple[bytes, int]:
@@ -301,7 +301,7 @@ def get_rgba(dgram: bytes, start_index: int) -> Tuple[bytes, int]:
             start_index + _INT_DGRAM_LEN,
         )
     except (struct.error, TypeError) as e:
-        raise OSCParseError("Could not parse datagram %s" % e)
+        raise OSCParseError("Could not parse datagram %s" % e) from e
 
 
 def get_midi(dgram: bytes, start_index: int) -> Tuple[Tuple[int, int, int, int], int]:
@@ -325,4 +325,4 @@ def get_midi(dgram: bytes, start_index: int) -> Tuple[Tuple[int, int, int, int],
         midi_msg = tuple((val & 0xFF << 8 * i) >> 8 * i for i in range(3, -1, -1))
         return (midi_msg, start_index + _INT_DGRAM_LEN)
     except (struct.error, TypeError) as e:
-        raise OSCParseError("Could not parse datagram %s" % e)
+        raise OSCParseError("Could not parse datagram %s" % e) from e

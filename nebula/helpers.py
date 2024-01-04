@@ -146,7 +146,7 @@ def get_item_runs(
 def get_next_item(
     item: int | Item,
     db: DB | None = None,
-    force: Literal["prev"] | None = None,
+    force: Literal["prev", "next"] | None = None,
     force_next_event: bool = False,
 ) -> Item | None:
     if db is None:
@@ -176,7 +176,7 @@ def get_next_item(
         assert isinstance(cpos, int)
 
         if (force == "prev" and ipos < cpos) or (force != "prev" and ipos > cpos):
-            if item_in_bin["item_role"] == "lead_out" and not force_next_event:
+            if item_in_bin["item_role"] == "lead_out" and force != "next":
                 log.info("Cueing Lead In")
                 for r in current_bin.items:
                     if r["item_role"] == "lead_in":

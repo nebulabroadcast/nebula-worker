@@ -91,7 +91,7 @@ class OSCMessage(object):
                 )
             self._parameters = params
         except OSCParseError as pe:
-            raise OSCParseError("Found incorrect datagram, ignoring it", pe)
+            raise OSCParseError("Found incorrect datagram, ignoring it", pe) from pe
 
     @property
     def address(self) -> str:

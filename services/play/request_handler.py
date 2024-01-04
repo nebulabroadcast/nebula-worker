@@ -1,15 +1,29 @@
 import json
 from http.server import BaseHTTPRequestHandler
+from typing import TYPE_CHECKING
 
 import nebula
 from nebula.response import NebulaResponse
 
+if TYPE_CHECKING:
+    from .play import PlayoutHTTPServer
+
 
 class PlayoutRequestHandler(BaseHTTPRequestHandler):
+    server: "PlayoutHTTPServer"
+
     def log_request(self, code="-", size="-"):
+        _ = code, size
         pass
 
-    def _do_headers(self, mime="application/json", response=200, headers=[]):
+    def _do_headers(
+        self,
+        mime="application/json",
+        response=200,
+        headers: list[tuple[str, str]] | None = None,
+    ):
+        if headers is None:
+            headers = []
         self.send_response(response)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
@@ -39,7 +53,8 @@ class PlayoutRequestHandler(BaseHTTPRequestHandler):
             return
 
         length = int(self.headers.get("content-length", -1))
-        postvars = json.loads(self.rfile.read1(length))
+        # read1 is no an error!
+        postvars = json.loads(self.rfile.read1(length))  # type: ignore
 
         method = self.path.lstrip("/").split("/")[0]
 
@@ -54,6 +69,9 @@ class PlayoutRequestHandler(BaseHTTPRequestHandler):
             elif result["message"]:
                 nebula.log.info(result.message)
             self.result(result.dict)
+        except AssertionError as e:
+            nebula.log.error(e)
+            self.result(NebulaResponse(500, str(e)).dict)
         except Exception:
             msg = nebula.log.traceback()
             self.result(NebulaResponse(500, msg).dict)

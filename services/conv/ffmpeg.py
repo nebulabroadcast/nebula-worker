@@ -43,9 +43,9 @@ class NebulaFFMPEG(BaseEncoder):
                 if p.text:
                     try:
                         exec(p.text)
-                    except Exception:
+                    except Exception as e:
                         nebula.log.traceback()
-                        raise ConversionError("Error in task 'pre' script.")
+                        raise ConversionError("Error in task 'pre' script.") from e
 
             elif p.tag == "paramset" and eval(p.attrib["condition"]):
                 for pp in p.findall("param"):
@@ -75,11 +75,11 @@ class NebulaFFMPEG(BaseEncoder):
                 if not os.path.isdir(target_dir):
                     try:
                         os.makedirs(target_dir)
-                    except Exception:
+                    except Exception as e:
                         nebula.log.traceback()
                         raise ConversionError(
                             f"Unable to create output directory {target_dir}"
-                        )
+                        ) from e
 
                 if not p.attrib.get("direct", False):
                     self.files[temp_path] = target_path
@@ -166,5 +166,5 @@ class NebulaFFMPEG(BaseEncoder):
             try:
                 nebula.log.debug(f"Moving {temp_path} to {target_path}")
                 os.rename(temp_path, target_path)
-            except IOError:
-                raise ConversionError("Unable to move output file")
+            except IOError as e:
+                raise ConversionError("Unable to move output file") from e

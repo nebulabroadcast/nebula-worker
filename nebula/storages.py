@@ -92,5 +92,4 @@ class Storages:
             yield Storage(storage_config)
 
 
-
 storages = Storages()

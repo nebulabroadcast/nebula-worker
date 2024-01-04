@@ -63,7 +63,7 @@ class OSCPacket(object):
                     "OSC Packet should at least contain an OscMessage or an OscBundle."
                 )
         except (OSCParseError) as pe:
-            raise OSCParseError(f"Could not parse packet {pe}")
+            raise OSCParseError(f"Could not parse packet {pe}") from pe
 
     @property
     def messages(self) -> List[TimedMessage]:

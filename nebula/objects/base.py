@@ -1,7 +1,6 @@
 import json
 import pprint
 import time
-
 from typing import TYPE_CHECKING, Any, Type
 
 from nxtools import slugify

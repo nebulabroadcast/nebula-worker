@@ -32,4 +32,5 @@ class Event(BaseObject):
                 self._asset = Asset(self["id_asset"], db=self.db)
         return self._asset
 
+
 object_helper["event"] = Event
