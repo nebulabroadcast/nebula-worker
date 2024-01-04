@@ -26,7 +26,7 @@ def is_serializable(value: Any) -> bool:
 
     This is used to check if a value can be stored in the database.
     """
-    if type(value) in (str, int, float, bool, dict, list, tuple):
+    if isinstance(value, (str, int, float, bool, dict, list, tuple)):
         return True
     return False
 
@@ -81,15 +81,15 @@ def normalize_meta(key: str, value: Any) -> Any:
             return float(value)
 
         case MetaClass.OBJECT:
-            assert is_serializable(value)
+            assert is_serializable(value), f"Object value {value} is not serializable"
             return value
 
         case MetaClass.FRACTION:
-            assert type(value) is str
+            assert isinstance(value, str), f"Fraction value {value} is not a string"
             return value
 
         case MetaClass.SELECT:
-            assert type(value) is str
+            assert isinstance(value, str), f"Select value {value} is not a string"
             return str(value)
 
         case MetaClass.LIST:

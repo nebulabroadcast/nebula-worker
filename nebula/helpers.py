@@ -1,8 +1,7 @@
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-
-from typing import Any
+from typing import Any, Literal
 
 from nxtools import datestr2ts
 
@@ -144,7 +143,12 @@ def get_item_runs(
     return result
 
 
-def get_next_item(item: int | Item, db: DB | None = None, force: bool = False):
+def get_next_item(
+    item: int | Item,
+    db: DB | None = None,
+    force: Literal["prev"] | None = None,
+    force_next_event: bool = False,
+) -> Item | None:
     if db is None:
         db = DB()
     if isinstance(item, int) and item > 0:
@@ -153,34 +157,43 @@ def get_next_item(item: int | Item, db: DB | None = None, force: bool = False):
         current_item = item
     else:
         log.error(f"Unexpected get_next_item argument {item}")
-        return False
+        return None
+
+    if not current_item.id:
+        return None
 
     log.debug(f"Looking for an item following {current_item}")
     current_bin = Bin(current_item["id_bin"], db=db)
 
-    items = current_bin.items
+    items_in_bin = current_bin.items
     if force == "prev":
-        items.reverse()
+        items_in_bin.reverse()
 
-    for item in items:
-        if (force == "prev" and item["position"] < current_item["position"]) or (
-            force != "prev" and item["position"] > current_item["position"]
-        ):
-            if item["item_role"] == "lead_out" and not force:
+    for item_in_bin in items_in_bin:
+        ipos = item_in_bin["position"]
+        cpos = current_item["position"]
+        assert isinstance(ipos, int)
+        assert isinstance(cpos, int)
+
+        if (force == "prev" and ipos < cpos) or (force != "prev" and ipos > cpos):
+            if item_in_bin["item_role"] == "lead_out" and not force_next_event:
                 log.info("Cueing Lead In")
-                for i, r in enumerate(current_bin.items):
+                for r in current_bin.items:
                     if r["item_role"] == "lead_in":
                         return r
                 else:
                     next_item = current_bin.items[0]
-                    next_item.asset
+                    _ = next_item.asset  # force asset preload
                     return next_item
-            if item["run_mode"] == RunMode.RUN_SKIP:
+            if item_in_bin["run_mode"] == RunMode.RUN_SKIP:
                 continue
-            item.asset
-            return item
+            _ = item_in_bin.asset  # force asset preload
+            return item_in_bin
     else:
-        current_event = get_item_event(item.id, db=db)
+        current_event = get_item_event(current_item.id, db=db)
+        if not current_event:
+            return None  # shouldn't happen, just keep mypy happy
+
         direction = ">"
         order = "ASC"
         if force == "prev":
@@ -196,31 +209,40 @@ def get_next_item(item: int | Item, db: DB | None = None, force: bool = False):
         )
         try:
             next_event = Event(meta=db.fetchall()[0][0], db=db)
+            _ = next_event.bin  # force bin preload
+            assert next_event.bin, f"{next_event} event has no bin"
+
             if not next_event.bin.items:
                 log.debug("Next playlist is empty")
                 raise Exception
-            if next_event["run_mode"] and not kwargs.get("force_next_event", False):
+            if next_event["run_mode"] and not force_next_event:
                 log.debug("Next playlist run mode is not auto")
                 raise Exception
             if force == "prev":
                 next_item = next_event.bin.items[-1]
             else:
                 next_item = next_event.bin.items[0]
-            next_item.asset
+            _ = next_item.asset  # force asset preload
             return next_item
         except Exception:
             log.info("Looping current playlist")
             next_item = current_bin.items[0]
-            next_item.asset
+            _ = next_item.asset  # force asset preload
             return next_item
 
 
-def bin_refresh(bins, **kwargs):
+def bin_refresh(
+    bins: list[int],
+    db: DB | None = None,
+    initiator: str | None = None,
+):
     bins = [b for b in bins if b]
     if not bins:
-        return True
-    db = kwargs.get("db", DB())
-    sender = kwargs.get("sender", False)
+        return
+
+    if db is None:
+        db = DB()
+
     for id_bin in bins:
         b = Bin(id_bin, db=db)
         b.save(notify=False)
@@ -239,26 +261,21 @@ def bin_refresh(bins, **kwargs):
         event = Event(meta=meta, db=db)
         if event.id not in changed_events:
             changed_events.append(event.id)
-    log.debug(f"Bins changed {bins}.", f"Initiator {kwargs.get('initiator', log.user)}")
+    log.debug(f"Bins changed {bins}")
     messaging.send(
         "objects_changed",
-        sender=sender,
         objects=bins,
         object_type="bin",
-        initiator=kwargs.get("initiator", None),
+        initiator=initiator,
     )
     if changed_events:
-        log.debug(
-            f"Events changed {bins}.Initiator {kwargs.get('initiator', log.user)}"
-        )
+        log.debug(f"Events changed {bins}")
         messaging.send(
             "objects_changed",
-            sender=sender,
             objects=changed_events,
             object_type="event",
-            initiator=kwargs.get("initiator", None),
+            initiator=initiator,
         )
-    return True
 
 
 def html2email(html):
@@ -275,6 +292,7 @@ def html2email(html):
 
 def markdown2email(text):
     if has_mistune:
+        assert mistune, "Mistune not installed"
         msg = MIMEMultipart("alternative")
         html = mistune.html(text)
         part1 = MIMEText(text, "plain")

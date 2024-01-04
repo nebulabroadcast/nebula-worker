@@ -1,12 +1,10 @@
 import sys
 import time
-
 from xml.etree.ElementTree import Element
 
 from nebula.db import DB
 from nebula.enum import ServiceState
 from nebula.log import log
-
 
 
 class BaseService:

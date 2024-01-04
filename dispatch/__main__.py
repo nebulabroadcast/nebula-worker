@@ -72,7 +72,7 @@ class NebulaDispatch:
 
     @property
     def is_running(self):
-        return any([agent.is_running for agent in self.agents])
+        return any(agent.is_running for agent in self.agents)
 
 
 if __name__ == "__main__":

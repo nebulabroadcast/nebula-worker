@@ -369,7 +369,7 @@ class Job:
 
 
 def get_job(id_service, action_ids, db=False):
-    assert type(action_ids) == list, "action_ids must be list of integers"
+    assert isinstance(action_ids, list), "action_ids must be list of integers"
     if not action_ids:
         return False
     db = db or DB()

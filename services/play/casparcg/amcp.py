@@ -58,7 +58,7 @@ class CasparCG:
     def query(self, query: str, **kwargs) -> str | None:
         """Send an AMCP command"""
         if self.lock.locked():
-            nebula.log.trace(f"Waiting for connection unlock: {query}")
+            log.trace(f"Waiting for connection unlock: {query}")
         with self.lock:
             if not self.connection:
                 self.connect(**kwargs)
