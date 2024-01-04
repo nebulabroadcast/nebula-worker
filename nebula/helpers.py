@@ -176,7 +176,7 @@ def get_next_item(
         assert isinstance(cpos, int)
 
         if (force == "prev" and ipos < cpos) or (force != "prev" and ipos > cpos):
-            if item_in_bin["item_role"] == "lead_out" and force != "next":
+            if item_in_bin["item_role"] == "lead_out" and not force:
                 log.info("Cueing Lead In")
                 for r in current_bin.items:
                     if r["item_role"] == "lead_in":
@@ -209,26 +209,27 @@ def get_next_item(
         )
         try:
             next_event = Event(meta=db.fetchall()[0][0], db=db)
+            log.debug(f"End of block. Next {next_event}")
             _ = next_event.bin  # force bin preload
             assert next_event.bin, f"{next_event} event has no bin"
+            assert next_event.bin.items, f"{next_event.bin} bin has no items"
+            assert not (
+                next_event["run_mode"] and not force_next_event
+            ), f"Next playlist run mode is not auto {next_event}"
 
-            if not next_event.bin.items:
-                log.debug("Next playlist is empty")
-                raise Exception
-            if next_event["run_mode"] and not force_next_event:
-                log.debug("Next playlist run mode is not auto")
-                raise Exception
             if force == "prev":
                 next_item = next_event.bin.items[-1]
             else:
                 next_item = next_event.bin.items[0]
             _ = next_item.asset  # force asset preload
             return next_item
+        except AssertionError as e:
+            log.info(f"Looping current playlist: {e}")
         except Exception:
-            log.info("Looping current playlist")
-            next_item = current_bin.items[0]
-            _ = next_item.asset  # force asset preload
-            return next_item
+            log.traceback("Error: looping current playlist as fallback")
+        next_item = current_bin.items[0]
+        _ = next_item.asset  # force asset preload
+        return next_item
 
 
 def bin_refresh(

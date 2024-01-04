@@ -19,7 +19,7 @@ class Event(BaseObject):
             if not self["id_magic"]:  # non-playout events
                 self._bin = None
             else:
-                self._bin = Bin(self["id_magic"], db=self.db)
+                self._bin = object_helper.Bin(self["id_magic"], db=self.db)
         return self._bin
 
     @property
@@ -29,7 +29,7 @@ class Event(BaseObject):
             if not self["id_asset"]:
                 self._asset = None
             else:
-                self._asset = Asset(self["id_asset"], db=self.db)
+                self._asset = object_helper.Asset(self["id_asset"], db=self.db)
         return self._asset
 
 
