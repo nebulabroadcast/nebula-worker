@@ -1,4 +1,6 @@
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+
+import nebula
 
 if TYPE_CHECKING:
     from .play import Service as PlayService
@@ -6,15 +8,5 @@ if TYPE_CHECKING:
 
 class BaseController:
     parent: "PlayService"
-    props: dict[str, Any]
-    state: dict[str, Any]
-
-    def __init__(self, parent: "PlayService"):
-        self.parent = parent
-        self.props = {}
-        self.state = {
-            "position": 0,
-            "duration": 0,
-            "paused": False,
-            "loop": False,
-        }
+    time_unit: str = "s"
+    current_item: nebula.Item | None = None

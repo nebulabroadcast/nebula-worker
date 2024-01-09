@@ -44,14 +44,19 @@ class Service(BaseService):
     current_event: nebula.Event | None = None
 
     def on_init(self):
-        id_channel = int(self.settings.find("id_channel").text)
-        self.channel = nebula.settings.get_playout_channel(id_channel)
+        channel_tag = self.settings.find("id_channel")
+        assert channel_tag, "No channel specified"
+        assert channel_tag.text, "No channel specified"
+        id_channel = int(channel_tag.text)
 
-        if self.channel is None:
+        channel = nebula.settings.get_playout_channel(id_channel)
+
+        if channel is None:
             nebula.log.error("No playout channel configured")
             self.shutdown(no_restart=True)
             return
 
+        self.channel = channel
         assert self.channel.controller_port, "No controller port configured"
 
         self.fps = float(self.channel.fps)

@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from nebula.objects.base import BaseObject, object_helper
 from nebula.settings import settings
@@ -16,7 +16,7 @@ class Item(BaseObject):
     object_type_id = 1
     required = ["id_bin", "id_asset", "position"]
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> Any:
         key = key.lower().strip()
         if key not in self.meta:
             if key == "id_asset":

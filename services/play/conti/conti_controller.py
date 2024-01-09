@@ -5,6 +5,8 @@ from conti import CONTI_DEBUG, Conti, ContiSource
 import nebula
 from nebula.response import NebulaResponse
 
+from ..base_controller import BaseController
+
 CONTI_DEBUG["source"] = False
 CONTI_DEBUG["encoder"] = False
 
@@ -26,7 +28,7 @@ class NebulaConti(Conti):
         self.parent.parent.on_progress()
 
 
-class ContiController:
+class ContiController(BaseController):
     time_unit = "s"
 
     def __init__(self, parent):

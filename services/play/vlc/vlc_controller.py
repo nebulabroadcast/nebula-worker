@@ -6,6 +6,8 @@ from nxtools import log_traceback, logging
 
 from nebula.response import NebulaResponse
 
+from ..base_controller import BaseController
+
 
 class VlcMedia:
     time_unit = "f"
@@ -60,7 +62,7 @@ class VlcMedia:
         return self.mark_out * 1000
 
 
-class VlcController:
+class VlcController(BaseController):
     def __init__(self, parent):
         self.parent = parent
 

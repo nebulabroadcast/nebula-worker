@@ -7,6 +7,7 @@ import nebula
 from nebula.helpers import bin_refresh
 from nebula.response import NebulaResponse
 
+from ..base_controller import BaseController
 from .amcp import CasparCG, CasparException
 from .caspar_data import CasparOSCServer
 
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
     from services.play import Service as PlayService
 
 
-class CasparController:
+class CasparController(BaseController):
     time_unit = "s"
     service: "PlayService"
 
@@ -100,7 +101,7 @@ class CasparController:
         self.cmdc = CasparCG(self.caspar_host, self.caspar_port)
         return self.cmdc.connect()
 
-    def query(self, *args, **kwargs) -> NebulaResponse:
+    def query(self, *args, **kwargs) -> str | None:
         """Send an AMCP query to the CasparCG server"""
         return self.cmdc.query(*args, **kwargs)
 
@@ -137,10 +138,10 @@ class CasparController:
         # casparcg duration is of the complete clip when osc is used
         # stupid.
         if self.current_item is not None:
-            if self.current_item["mark_out"]:
-                dur = min(dur, self.current_item["mark_out"])
-            if self.current_item["mark_in"]:
-                dur -= self.current_item["mark_in"]
+            if self.current_item.mark_out():
+                dur = min(dur, self.current_item.mark_out())
+            if self.current_item.mark_in():
+                dur -= self.current_item.mark_in()
 
         self.pos = pos
         self.dur = dur
@@ -236,6 +237,7 @@ class CasparController:
         loop: bool = False,
         **kwargs,
     ):
+        _ = kwargs
         if layer is None:
             layer = self.caspar_feed_layer
 
