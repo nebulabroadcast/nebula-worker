@@ -1,4 +1,5 @@
 import os
+import subprocess
 from typing import Any, Callable
 
 from nxtools import get_temp
@@ -27,7 +28,7 @@ class BaseEncoder:
         self.asset = asset
         self.task = task
         self.params = params
-        self.proc = None
+        self.proc: subprocess.Popen | None = None
         self.progress = 0
         self.message = "Started"
         self.aborted = False

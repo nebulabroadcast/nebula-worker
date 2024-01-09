@@ -220,7 +220,7 @@ class Service(BaseService):
 
         if not item:
             nebula.log.warning("Unable to cue next item. No current clip")
-            return
+            return None
 
         item_next = get_next_item(
             item,
@@ -230,7 +230,7 @@ class Service(BaseService):
 
         if not item_next:
             nebula.log.warning("Unable to cue next item. No next clip")
-            return
+            return None
 
         if item_next["run_mode"] == 1:
             auto = False
@@ -243,7 +243,7 @@ class Service(BaseService):
         if result.is_error:
             if level > 5:
                 nebula.log.error("Cue it yourself....")
-                return False
+                return None
             nebula.log.warning(
                 f"Unable to cue {item_next} ({result.message}). Trying next."
             )

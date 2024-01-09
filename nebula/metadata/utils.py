@@ -85,18 +85,21 @@ def make_cs_tree(
     if (scheme := settings.cs.get(urn)) is None:
         return []
     items = [
-        {"value": value, "title": get_cs_titles(urn, (value,), lang)[0]}
+        {
+            "value": value,
+            "title": get_cs_titles(urn, (value,), lang)[0],
+        }
         for value in scheme.values()
     ]
     if order == "value":
-        items.sort(key=lambda x: x["value"])
+        items.sort(key=lambda x: x["value"])  # type: ignore
     elif order in ["title", "alias"]:
-        items.sort(key=lambda x: unaccent(x["title"]))
+        items.sort(key=lambda x: unaccent(x["title"]))  # type: ignore
 
     parents: DefaultDict[str, list[Any]] = defaultdict(list[Any])
 
     for item in items:
-        path = item["value"].split(".")
+        path = item["value"].split(".")  # type: ignore
         parent_id = ".".join(path[:-1])
         if parent_id not in [i["value"] for i in items]:
             parent_id = ""

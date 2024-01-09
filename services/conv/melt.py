@@ -40,9 +40,6 @@ class NebulaMelt(BaseEncoder):
         assert asset
         assert params is not None
 
-        # TODO: load this from config
-        postproc_context: dict[str, Any] | None = None
-
         self.files = {}
         self.cmd = ["melt", "-progress"]
 
@@ -51,12 +48,14 @@ class NebulaMelt(BaseEncoder):
             asset["path"],
         )
 
-        if postproc_context is not None:
-            with open(self.temp_path, "w") as f:
-                f.write(process_template(source_path, postproc_context))
-            self.cmd.append(self.temp_path)
-        else:
-            self.cmd.append(source_path)
+        # TODO: load this from config
+        # postproc_context: dict[str, Any] | None = None
+        # if postproc_context is not None:
+        #     with open(self.temp_path, "w") as f:
+        #         f.write(process_template(source_path, postproc_context))
+        #     self.cmd.append(self.temp_path)
+        # else:
+        self.cmd.append(source_path)
 
         profile = self.task.attrib.get("profile", None)
         if profile is not None:
@@ -132,11 +131,12 @@ class NebulaMelt(BaseEncoder):
     def stop(self) -> None:
         if not self.is_running:
             return None
-        self.proc.send_signal(signal.SIGINT)
+        self.proc.send_signal(signal.SIGINT)  # type: ignore
 
     def wait(self, progress_handler: Callable) -> None:
         buff = ""
         current_percent = 0
+        assert self.proc
         assert self.proc.stderr
         while self.proc.poll() is None:
             buff += self.proc.stderr.read(1)
@@ -155,6 +155,7 @@ class NebulaMelt(BaseEncoder):
         self.proc.wait()
 
     def finalize(self) -> None:
+        assert self.proc
         assert self.proc.stderr
         if self.proc.returncode > 0:
             nebula.log.error(self.proc.stderr.read())

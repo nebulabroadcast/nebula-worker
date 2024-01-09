@@ -17,7 +17,7 @@ def string2cs(key: str, value: str):
         return None
     vslug = slugify(value, separator=" ")
     best_match = None
-    max_ratio = 0
+    max_ratio: float = 0
     for ckey, cals in settings.cs[cs].items():
         cval = cals.aliases["en"].title
         reflist = [v.strip() for v in cval.split("/")]
