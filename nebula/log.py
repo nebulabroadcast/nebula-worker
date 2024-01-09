@@ -2,6 +2,11 @@ import enum
 import sys
 import traceback
 
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from nebula.messaging import Messaging
+
 
 def indent(text: str, level: int = 4) -> str:
     return text.replace("\n", f"\n{' '*level}")
@@ -22,6 +27,7 @@ class LogLevel(enum.IntEnum):
 class Logger:
     user: str = "nebula"
     level = LogLevel.DEBUG
+    messaging: Optional["Messaging"] = None
 
     def __call__(self, level: LogLevel, *args, **kwargs):
         if level < self.level:
@@ -36,6 +42,14 @@ class Logger:
             file=sys.stderr,
             flush=True,
         )
+
+        if self.messaging:
+            self.messaging(
+                "log",
+                level=level,
+                user=usr,
+                message=msg,
+            )
 
     def trace(self, *args, **kwargs):
         self(LogLevel.TRACE, *args, **kwargs)
