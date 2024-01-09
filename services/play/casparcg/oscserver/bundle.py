@@ -39,7 +39,7 @@ class OSCBundle(object):
     # but that would require import annotations from __future__, which is
     # python 3.7+ only.
     def _parse_contents(self, index: int) -> Any:
-        contents = []
+        contents: list[OSCMessage | OSCBundle] = []
 
         try:
             # An OSC Bundle Element consists of its size and its contents.
@@ -69,7 +69,7 @@ class OSCBundle(object):
         return dgram.startswith(_BUNDLE_PREFIX)
 
     @property
-    def timestamp(self) -> int:
+    def timestamp(self) -> float:
         """Returns the timestamp associated with this bundle."""
         return self._timestamp
 

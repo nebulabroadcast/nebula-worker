@@ -137,7 +137,7 @@ def get_uint64(dgram: bytes, start_index: int) -> Tuple[int, int]:
         raise OSCParseError("Could not parse datagram %s" % e) from e
 
 
-def get_timetag(dgram: bytes, start_index: int) -> Tuple[datetime, int]:
+def get_timetag(dgram: bytes, start_index: int) -> Tuple[tuple[datetime, int], int]:
     """Get a 64-bit OSC time tag from the datagram.
 
     Args:
@@ -323,6 +323,6 @@ def get_midi(dgram: bytes, start_index: int) -> Tuple[Tuple[int, int, int, int],
         dgr = dgram[start_index : start_index + _INT_DGRAM_LEN]  # noqa
         val = struct.unpack(">I", dgr)[0]
         midi_msg = tuple((val & 0xFF << 8 * i) >> 8 * i for i in range(3, -1, -1))
-        return (midi_msg, start_index + _INT_DGRAM_LEN)
+        return (midi_msg, start_index + _INT_DGRAM_LEN)  # type: ignore
     except (struct.error, TypeError) as e:
         raise OSCParseError("Could not parse datagram %s" % e) from e
