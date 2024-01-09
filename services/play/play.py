@@ -45,7 +45,6 @@ class Service(BaseService):
 
     def on_init(self):
         channel_tag = self.settings.find("id_channel")
-        assert channel_tag, "No channel specified"
         assert channel_tag.text, "No channel specified"
         id_channel = int(channel_tag.text)
 
