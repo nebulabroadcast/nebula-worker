@@ -199,22 +199,33 @@ class Service(BaseService):
         assert nc, "Unable to cue. No previous item"
         return self.cue(item=nc, db=db, level=5)
 
-    def cue_next(self, **kwargs):
+    def cue_next(
+        self,
+        item: nebula.Item | None = None,
+        db: DB | None = None,
+        level: int = 0,
+        play: bool = False,
+    ) -> nebula.Item | None:
+        nebula.log.trace("Cueing the next item")
         assert self.controller, "Unable to cue. Controller not found"
-        nebula.log.info("Cueing the next item")
+
         # TODO: deprecate. controller should handle this
         self.controller.cueing = True
-        item = kwargs.get("item", self.controller.current_item)
-        level = kwargs.get("level", 0)
-        db = kwargs.get("db", DB())
-        play = kwargs.get("play", False)
+
+        if item is None:
+            item = self.controller.current_item
+
+        if db is None:
+            db = DB()
 
         if not item:
             nebula.log.warning("Unable to cue next item. No current clip")
             return
 
         item_next = get_next_item(
-            item.id, db=db, force_next_event=bool(self.auto_event)
+            item,
+            db=db,
+            force_next_event=bool(self.auto_event),
         )
 
         if not item_next:

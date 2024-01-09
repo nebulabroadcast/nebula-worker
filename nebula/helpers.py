@@ -172,8 +172,10 @@ def get_next_item(
     for item_in_bin in items_in_bin:
         ipos = item_in_bin["position"]
         cpos = current_item["position"]
-        assert isinstance(ipos, int)
-        assert isinstance(cpos, int)
+
+        # This should never happen, just keep mypy happy
+        assert isinstance(ipos, int), f"ipos {ipos} is not an int"
+        assert isinstance(cpos, int), f"cpos {cpos} is not an int"
 
         if (force == "prev" and ipos < cpos) or (force != "prev" and ipos > cpos):
             if item_in_bin["item_role"] == "lead_out" and not force:
@@ -224,9 +226,11 @@ def get_next_item(
             _ = next_item.asset  # force asset preload
             return next_item
         except AssertionError as e:
-            log.info(f"Looping current playlist: {e}")
+            log.info(f"Looping {current_event}: {e}")
+        except IndexError:
+            log.info(f"Looping {current_event}: no next event")
         except Exception:
-            log.traceback("Error: looping current playlist as fallback")
+            log.traceback(f"Error: looping {current_event} as fallback")
         next_item = current_bin.items[0]
         _ = next_item.asset  # force asset preload
         return next_item
