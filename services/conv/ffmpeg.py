@@ -160,7 +160,7 @@ class NebulaFFMPEG(BaseEncoder):
 
         if self.proc.returncode > 0:
             nebula.log.error(self.proc.stderr.read())
-            raise ConversionError("Encoding failed\n" + self.error_log)
+            raise ConversionError("Encoding failed")
 
         for temp_path, target_path in self.files.items():
             try:
