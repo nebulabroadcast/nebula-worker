@@ -80,6 +80,9 @@ class CasparCG:
                 raise CasparConnectionException(
                     "Caspar connection reset by peer"
                 ) from e
+            except BrokenPipeError as e:
+                self.connection = None
+                raise CasparConnectionException("Caspar connection broken") from e
             except Exception as e:
                 log.traceback()
                 raise CasparConnectionException("Caspar query failed") from e

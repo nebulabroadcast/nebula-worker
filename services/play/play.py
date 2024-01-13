@@ -125,23 +125,20 @@ class Service(BaseService):
             _ = item.asset
             del kwargs["id_item"]
         else:
-            return NebulaResponse(400, "Unable to cue. No item specified")
+            raise AssertionError("Unable to cue. No item specified")
 
-        if not item:
-            return NebulaResponse(404, f"Unable to cue. {item} does not exist")
+        assert item, f"Unable to cue. Item {item} not found"
 
         if item["item_role"] == "live":
             fname = self.channel.config.get("live_source")
-            if fname is None:
-                return NebulaResponse(400, "Live source is not configured")
+            assert fname is None, "Live source is not configured"
             nebula.log.info("Next is item is live")
             response = self.controller.cue(fname, item, **kwargs)
             if response.is_success:
                 self.cued_live = True
             return response
 
-        if not item["id_asset"]:
-            return NebulaResponse(400, f"Unable to cue virtual {item}")
+        assert item["id_asset"], f"Unable to cue virtual {item}"
 
         asset = item.asset
         assert asset, f"Unable to cue. Asset {item['id_asset']} not found"
