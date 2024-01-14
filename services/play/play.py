@@ -44,7 +44,6 @@ class Service(BaseService):
 
     def on_init(self):
         channel_tag = self.settings.find("id_channel")
-        assert channel_tag, "No channel specified"
         assert channel_tag.text, "No channel specified"
         id_channel = int(channel_tag.text)
 
@@ -112,7 +111,7 @@ class Service(BaseService):
     # API Commands
     #
 
-    def cue(self, **kwargs):
+    def cue(self, **kwargs) -> None:
         db = kwargs.get("db", DB())
         assert self.channel, f"Unable to cue. Channel {self.channel.id} not found"
         assert self.controller, "Unable to cue. Controller not found"
@@ -178,7 +177,7 @@ class Service(BaseService):
         self.cued_live = False
         return self.controller.cue(item=item, **kwargs)
 
-    def cue_forward(self, **kwargs):
+    def cue_forward(self, **kwargs) -> None:
         _ = kwargs
         assert self.controller, "Unable to cue. Controller not found"
         cc = self.controller.cued_item
@@ -188,7 +187,7 @@ class Service(BaseService):
         assert nc, "Unable to cue. No next item"
         return self.cue(item=nc, db=db)
 
-    def cue_backward(self, **kwargs):
+    def cue_backward(self, **kwargs) -> None:
         _ = kwargs
         assert self.controller, "Unable to cue. Controller not found"
         cc = self.controller.cued_item
@@ -196,7 +195,7 @@ class Service(BaseService):
         db = DB()
         nc = get_next_item(cc, db=db, force="prev")
         assert nc, "Unable to cue. No previous item"
-        self.cue(item=nc, db=db, level=5)
+        return self.cue(item=nc, db=db, level=5)
 
     def cue_next(
         self,
@@ -237,33 +236,31 @@ class Service(BaseService):
             auto = True
 
         nebula.log.info(f"Auto-cueing {item_next}")
-        result = self.cue(item=item_next, play=play, auto=auto)
-
-        if result.is_error:
+        try:
+            self.cue(item=item_next, play=play, auto=auto)
+        except Exception as e:
             if level > 5:
                 nebula.log.error("Cue it yourself....")
                 return None
-            nebula.log.warning(
-                f"Unable to cue {item_next} ({result.message}). Trying next."
-            )
+            nebula.log.warning(f"Unable to cue {item_next} ({e}). Trying next.")
             item_next = self.cue_next(item=item_next, db=db, level=level + 1, play=play)
         return item_next
 
-    def take(self, **kwargs):
+    def take(self, **kwargs) -> None:
         assert self.controller, "Unable to take. Controller not found"
-        return self.controller.take(**kwargs)
+        self.controller.take(**kwargs)
 
-    def freeze(self, **kwargs):
+    def freeze(self, **kwargs) -> None:
         assert self.controller, "Unable to freeze. Controller not found"
-        return self.controller.freeze(**kwargs)
+        self.controller.freeze(**kwargs)
 
-    def retake(self, **kwargs):
+    def retake(self, **kwargs) -> None:
         assert self.controller, "Unable to retake. Controller not found"
-        return self.controller.retake(**kwargs)
+        self.controller.retake(**kwargs)
 
-    def abort(self, **kwargs):
+    def abort(self, **kwargs) -> None:
         assert self.controller, "Unable to abort. Controller not found"
-        return self.controller.abort(**kwargs)
+        self.controller.abort(**kwargs)
 
     def set(self, **kwargs):
         """Set a controller property.
@@ -280,12 +277,12 @@ class Service(BaseService):
         assert hasattr(self.controller, "set"), "Unable to set. Method not found"
         return self.controller.set(key, value)
 
-    def stat(self, **kwargs):
+    def stat(self, **kwargs) -> dict[str, Any]:
         """Returns current status of the playback"""
         _ = kwargs
         return {"data": self.playout_status}
 
-    def plugin_list(self, **kwargs):
+    def plugin_list(self, **kwargs) -> dict[str, Any]:
         _ = kwargs
         result = []
         for plugin in self.plugins:

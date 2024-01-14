@@ -70,15 +70,15 @@ class CasparController(BaseController):
             nebula.log.warning("Waiting for OSC")
 
     @property
-    def id_channel(self):
+    def id_channel(self) -> int:
         return self.parent.channel.id
 
     @property
-    def request_time(self):
+    def request_time(self) -> float:
         return time.time()
 
     @property
-    def fps(self):
+    def fps(self) -> float:
         return self.parent.fps
 
     @property
@@ -95,10 +95,10 @@ class CasparController(BaseController):
             return 0
         return self.dur
 
-    def connect(self):
+    def connect(self) -> None:
         """Connect to a running CasparCG instance using AMCP protocol"""
         self.cmdc = CasparCG(self.caspar_host, self.caspar_port)
-        return self.cmdc.connect()
+        self.cmdc.connect()
 
     def query(self, *args, **kwargs) -> str | None:
         """Send an AMCP query to the CasparCG server"""
@@ -235,7 +235,7 @@ class CasparController(BaseController):
         auto: bool = True,
         loop: bool = False,
         **kwargs,
-    ):
+    ) -> None:
         _ = kwargs
         if layer is None:
             layer = self.caspar_feed_layer
@@ -262,6 +262,7 @@ class CasparController(BaseController):
         try:
             self.query(query)
         except CasparException as e:
+            nebula.log.error(f"Unable to cue {fname} {e}")
             message = f'Unable to cue "{fname}" {e}'
             self.cued_item = None
             self.cued_fname = None
@@ -277,12 +278,12 @@ class CasparController(BaseController):
             self.current_item = item
             self.current_fname = fname
 
-    def clear(self, layer: int | None = None):
+    def clear(self, layer: int | None = None) -> None:
         if layer is None:
             layer = self.caspar_feed_layer
         self.query(f"CLEAR {self.caspar_channel}-{layer}")
 
-    def take(self, layer: int | None = None):
+    def take(self, layer: int | None = None) -> None:
         if layer is None:
             layer = self.caspar_feed_layer
         try:
@@ -294,7 +295,7 @@ class CasparController(BaseController):
         except CasparException as e:
             raise CasparException(f"Take failed: {e}") from e
 
-    def retake(self, layer: int | None = None):
+    def retake(self, layer: int | None = None) -> None:
         if layer is None:
             layer = self.caspar_feed_layer
         assert not self.parent.current_live, "Unable to retake live item"
@@ -318,7 +319,7 @@ class CasparController(BaseController):
             message = f"Take command failed: {e}"
             raise CasparException(message) from e
 
-    def freeze(self, layer: int | None = None):
+    def freeze(self, layer: int | None = None) -> None:
         if layer is None:
             layer = self.caspar_feed_layer
         assert not self.parent.current_live, "Unable to freeze live item"
@@ -331,7 +332,7 @@ class CasparController(BaseController):
         except CasparException as e:
             raise CasparException(f"Freeze failed: {e}") from e
 
-    def abort(self, layer: int | None = None):
+    def abort(self, layer: int | None = None) -> None:
         if layer is None:
             layer = self.caspar_feed_layer
         assert self.cued_item, "Unable to abort. No item is cued."
@@ -347,7 +348,7 @@ class CasparController(BaseController):
             query += f" LENGTH {length}"
         self.query(query)
 
-    def set(self, key: str, value: Any):
+    def set(self, key: str, value: Any) -> None:
         if key == "loop":
             do_loop = int(str(value) in ["1", "True", "true"])
             try:

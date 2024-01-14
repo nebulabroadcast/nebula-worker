@@ -15,32 +15,14 @@ class PlayoutRequestHandler(BaseHTTPRequestHandler):
         _ = code, size
         pass
 
-    def _do_headers(
-        self,
-        mime="application/json",
-        response=200,
-        headers: list[tuple[str, str]] | None = None,
-    ):
-        if headers is None:
-            headers = []
+    def result(self, data: dict[str, Any], response: int = 200):
         self.send_response(response)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-        for h in headers:
-            self.send_header(h[0], h[1])
-        self.send_header("Content-type", mime)
+        self.send_header("Content-type", "application/json")
         self.end_headers()
-
-    def _echo(self, istring):
-        self.wfile.write(bytes(istring, "utf-8"))
-
-    def result(self, data):
-        self._do_headers()
-        self._echo(json.dumps(data))
-
-    def error(self, response, message=""):
-        self._do_headers()  # return 200 anyway
-        self._echo(json.dumps({"response": response, "message": message}))
+        payload = json.dumps(data)
+        self.wfile.write(bytes(payload, "utf-8"))
 
     def do_GET(self):
         pass
@@ -52,7 +34,7 @@ class PlayoutRequestHandler(BaseHTTPRequestHandler):
             return
 
         length = int(self.headers.get("content-length", -1))
-        # read1 is no an error!
+        # read1 is not an error!
         postvars = json.loads(self.rfile.read1(length))  # type: ignore
 
         method = self.path.lstrip("/").split("/")[0]
@@ -75,4 +57,4 @@ class PlayoutRequestHandler(BaseHTTPRequestHandler):
         if "response" not in result:
             result["response"] = 200
 
-        self.result({"response": 200, **result})
+        self.result(result, result["response"])

@@ -110,7 +110,7 @@ class CasparCG:
                         # the original query
                         _ = self.connection.read_until(DELIM.encode("utf-8"))
 
-                    return result
+                    raise CasparException(f"CasparCG error: {result}")
 
             except Exception as e:
                 raise CasparException(f"Malformed result: {result}") from e
