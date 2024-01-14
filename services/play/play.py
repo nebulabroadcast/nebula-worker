@@ -8,7 +8,6 @@ from nebula.base_service import BaseService
 from nebula.db import DB
 from nebula.enum import ObjectStatus, RunMode
 from nebula.helpers import get_item_event, get_next_item
-from nebula.response import NebulaResponse
 from services.play.plugins import PlayoutPlugins
 from services.play.request_handler import PlayoutRequestHandler
 
@@ -45,6 +44,7 @@ class Service(BaseService):
 
     def on_init(self):
         channel_tag = self.settings.find("id_channel")
+        assert channel_tag, "No channel specified"
         assert channel_tag.text, "No channel specified"
         id_channel = int(channel_tag.text)
 
@@ -163,7 +163,7 @@ class Service(BaseService):
 
         if not kwargs["full_path"]:
             state = ObjectStatus(playout_status).name
-            return NebulaResponse(404, f"Unable to cue {state} playout file")
+            raise AssertionError(f"Unable to cue {state} playout file")
 
         kwargs["mark_in"] = item["mark_in"]
         kwargs["mark_out"] = item["mark_out"]
@@ -182,8 +182,7 @@ class Service(BaseService):
         _ = kwargs
         assert self.controller, "Unable to cue. Controller not found"
         cc = self.controller.cued_item
-        if not cc:
-            return NebulaResponse(204)
+        assert cc, "Unable to cue cue_forward. No cued item"
         db = DB()
         nc = get_next_item(cc, db=db, force="next")
         assert nc, "Unable to cue. No next item"
@@ -193,12 +192,11 @@ class Service(BaseService):
         _ = kwargs
         assert self.controller, "Unable to cue. Controller not found"
         cc = self.controller.cued_item
-        if not cc:
-            return NebulaResponse(204)
+        assert cc, "Unable to cue cue_backward. No cued item"
         db = DB()
         nc = get_next_item(cc, db=db, force="prev")
         assert nc, "Unable to cue. No previous item"
-        return self.cue(item=nc, db=db, level=5)
+        self.cue(item=nc, db=db, level=5)
 
     def cue_next(
         self,
@@ -277,16 +275,15 @@ class Service(BaseService):
         assert self.controller, "Unable to set. Controller not found"
         key = kwargs.get("key", None)
         value = kwargs.get("value", None)
-        if (key is None) or (value is None):
-            return NebulaResponse(400)
-        if hasattr(self.controller, "set"):
-            return self.controller.set(key, value)
-        return NebulaResponse(501)
+        assert key, "Unable to set. Key not specified"
+        assert value, "Unable to set. Value not specified"
+        assert hasattr(self.controller, "set"), "Unable to set. Method not found"
+        return self.controller.set(key, value)
 
     def stat(self, **kwargs):
         """Returns current status of the playback"""
         _ = kwargs
-        return NebulaResponse(200, data=self.playout_status)
+        return {"data": self.playout_status}
 
     def plugin_list(self, **kwargs):
         _ = kwargs
@@ -295,27 +292,20 @@ class Service(BaseService):
             if not plugin.manifest.slots:
                 continue
             result.append(plugin.manifest.dict())
-        return NebulaResponse(200, plugins=result)
+        return {"plugins": result}
 
     def plugin_exec(self, **kwargs):
         plugin_name = kwargs.get("name", None)
         action = kwargs.get("action", None)
         data = kwargs.get("data", None)
 
-        if not (plugin_name and action):
-            return NebulaResponse(400, "plugin or action not specified")
+        assert plugin_name, "Plugin name not specified"
+        assert action, "Plugin action not specified"
 
         nebula.log.debug(f"Executing {plugin_name}.{action}")
-        try:
-            plugin = self.plugins[plugin_name]
-        except KeyError:
-            nebula.log.traceback()
-            return NebulaResponse(400, f"Plugin {plugin_name} not active")
-
-        if plugin.on_command(action, data):
-            return NebulaResponse(200)
-        else:
-            return NebulaResponse(500, "Playout plugin failed")
+        assert plugin_name in self.plugins, f"Plugin {plugin_name} not active"
+        plugin = self.plugins[plugin_name]
+        assert plugin.on_command(action, data), "Plugin call failed"
 
     #
     # Props

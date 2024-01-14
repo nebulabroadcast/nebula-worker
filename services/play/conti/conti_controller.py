@@ -1,14 +1,10 @@
 import time
 
-from conti import CONTI_DEBUG, Conti, ContiSource
+from conti import Conti, ContiSource
 
 import nebula
-from nebula.response import NebulaResponse
 
 from ..base_controller import BaseController
-
-CONTI_DEBUG["source"] = False
-CONTI_DEBUG["encoder"] = False
 
 
 class NebulaContiSource(ContiSource):
@@ -33,8 +29,8 @@ class ContiController(BaseController):
 
     def __init__(self, parent):
         self.parent = parent
-        self.cueing = False
-        self.cued = False
+        self.cueing = None
+        self.cued = None
         self.request_time = time.time()
         self.position = self.duration = 0
         settings = {
@@ -48,19 +44,19 @@ class ContiController(BaseController):
 
     @property
     def current_item(self):
-        return self.conti.current.item if self.conti.current else False
+        return self.conti.current.item if self.conti.current else None
 
     @property
     def current_fname(self):
-        return self.conti.current.path if self.conti.current else False
+        return self.conti.current.path if self.conti.current else None
 
     @property
     def cued_item(self):
-        return self.cued.item if self.cued else False
+        return self.cued.item if self.cued else None
 
     @property
     def cued_fname(self):
-        return self.cued.path if self.cued else False
+        return self.cued.path if self.cued else None
 
     @property
     def id_channel(self):
@@ -80,6 +76,7 @@ class ContiController(BaseController):
         return False
 
     def set(self, prop, value):
+        _ = prop, value
         return True
 
     def cue(self, item, full_path, **kwargs):
@@ -96,8 +93,7 @@ class ContiController(BaseController):
         self.cued.open()
         self.cueing = False
 
-        if not self.cued:
-            return NebulaResponse(500)
+        assert self.cued, "Failed to cue item"
 
         if len(self.conti.playlist) > 1:
             del self.conti.playlist[1:]
@@ -109,23 +105,22 @@ class ContiController(BaseController):
 
         if kwargs.get("play", False):
             return self.take()
-        message = f"Cued item {self.cued_item} ({full_path})"
-        return NebulaResponse(200, message)
+        nebula.log.info(f"Cued item {self.cued_item} ({full_path})")
 
     def take(self, **kwargs):
+        _ = kwargs
         self.conti.take()
-        return NebulaResponse(200)
 
     def freeze(self, **kwargs):
+        _ = kwargs
         self.conti.freeze()
-        return NebulaResponse(200)
 
     def retake(self, **kwargs):
-        return NebulaResponse(200)
+        _ = kwargs
 
     def abort(self, **kwargs):
+        _ = kwargs
         self.conti.abort()
-        return NebulaResponse(200)
 
     def shutdown(self):
         self.conti.stop()

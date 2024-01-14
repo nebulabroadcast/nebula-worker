@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any
 
 import nebula
 from nebula.helpers import bin_refresh
-from nebula.response import NebulaResponse
 
 from ..base_controller import BaseController
 from .amcp import CasparCG, CasparException
@@ -269,7 +268,7 @@ class CasparController(BaseController):
             self.cueing = False
             self.cueing_item = None
             self.cueing_time = 0
-            return NebulaResponse(500, message)
+            raise CasparException(message) from e
 
         if play:
             self.cueing = False
@@ -277,38 +276,29 @@ class CasparController(BaseController):
             self.cueing_time = 0
             self.current_item = item
             self.current_fname = fname
-        return NebulaResponse(200)
 
     def clear(self, layer: int | None = None):
         if layer is None:
             layer = self.caspar_feed_layer
-        try:
-            self.query(f"CLEAR {self.caspar_channel}-{layer}")
-            return NebulaResponse(200)
-        except CasparException:
-            return NebulaResponse(200, "Layer cleared")
+        self.query(f"CLEAR {self.caspar_channel}-{layer}")
 
     def take(self, layer: int | None = None):
         if layer is None:
             layer = self.caspar_feed_layer
-        if not self.cued_item or self.cueing:
-            return NebulaResponse(400, "Unable to take. No item is cued.")
         try:
             self.query(f"PLAY {self.caspar_channel}-{layer}")
             if self.parent.current_live:
                 self.parent.on_live_leave()
             self.stalled = False
-            return NebulaResponse(200, "Take OK")
+            return
         except CasparException as e:
-            return NebulaResponse(500, f"Take failed: {e}")
+            raise CasparException(f"Take failed: {e}") from e
 
     def retake(self, layer: int | None = None):
         if layer is None:
             layer = self.caspar_feed_layer
-        if self.parent.current_live:
-            return NebulaResponse(409, "Unable to retake live item")
-        if self.current_item is None:
-            return NebulaResponse(409, "Unable to retake. No current item")
+        assert not self.parent.current_live, "Unable to retake live item"
+        assert self.current_item, "Unable to retake. No current item"
         seekparams = "SEEK " + str(int(self.current_item.mark_in() * self.channel_fps))
         if self.current_item.mark_out():
             seekparams += " LENGTH " + str(
@@ -324,33 +314,27 @@ class CasparController(BaseController):
             self.query(query)
             self.stalled = False
             self.parent.cue_next()
-            return NebulaResponse(200, "Retake OK")
         except CasparException as e:
             message = f"Take command failed: {e}"
-            return NebulaResponse(500, message)
+            raise CasparException(message) from e
 
     def freeze(self, layer: int | None = None):
         if layer is None:
             layer = self.caspar_feed_layer
-        if self.parent.current_live:
-            return NebulaResponse(409, "Unable to freeze live item")
+        assert not self.parent.current_live, "Unable to freeze live item"
         if self.paused:
             query = f"RESUME {self.caspar_channel}-{layer}"
-            message = "Playback resumed"
         else:
             query = f"PAUSE {self.caspar_channel}-{layer}"
-            message = "Playback paused"
         try:
             self.query(query)
         except CasparException as e:
-            return NebulaResponse(500, f"Freeze failed: {e}")
-        return NebulaResponse(200, message)
+            raise CasparException(f"Freeze failed: {e}") from e
 
     def abort(self, layer: int | None = None):
         if layer is None:
             layer = self.caspar_feed_layer
-        if self.cued_item is None:
-            return NebulaResponse(400, "Unable to abort. No item is cued.")
+        assert self.cued_item, "Unable to abort. No item is cued."
         query = f"LOAD {self.caspar_channel}-{layer} {self.cued_fname}"
         if self.cued_item.mark_in():
             seek = int(self.cued_item.mark_in() * self.channel_fps)
@@ -361,11 +345,7 @@ class CasparController(BaseController):
                 * self.channel_fps
             )
             query += f" LENGTH {length}"
-        try:
-            self.query(query)
-            return NebulaResponse(200, "Clip aborted")
-        except CasparException as e:
-            return NebulaResponse(500, e)
+        self.query(query)
 
     def set(self, key: str, value: Any):
         if key == "loop":
@@ -374,13 +354,11 @@ class CasparController(BaseController):
                 q = f"CALL {self.caspar_channel}-{self.caspar_feed_layer} LOOP {do_loop}"
                 self.query(q)
             except CasparException as e:
-                return NebulaResponse(500, f"Set loop failed: {e}")
+                raise CasparException(f"Unable to set loop: {e}") from e
 
             if self.current_item and bool(self.current_item["loop"] != bool(do_loop)):
                 self.current_item["loop"] = bool(do_loop)
                 self.current_item.save(notify=False)
                 bin_refresh([self.current_item["id_bin"]], db=self.current_item.db)
-            return NebulaResponse(200, "SET LOOP")
-
         else:
-            return NebulaResponse(400, f"Unsupported SET call: {key}")
+            raise ValueError(f"Unknown set key: {key}")

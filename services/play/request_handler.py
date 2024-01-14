@@ -1,9 +1,8 @@
 import json
 from http.server import BaseHTTPRequestHandler
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import nebula
-from nebula.response import NebulaResponse
 
 if TYPE_CHECKING:
     from .play import PlayoutHTTPServer
@@ -62,16 +61,18 @@ class PlayoutRequestHandler(BaseHTTPRequestHandler):
             self.error(501, f"Method {method} is not implemented.")
             return
 
+        result: dict[str, Any] | None = None
         try:
             result = self.server.methods[method](**postvars)
-            if result.is_error:
-                nebula.log.error(result.message)
-            elif result["message"]:
-                nebula.log.info(result.message)
-            self.result(result.dict)
-        except AssertionError as e:
-            nebula.log.error(e)
-            self.result(NebulaResponse(500, str(e)).dict)
-        except Exception:
-            msg = nebula.log.traceback()
-            self.result(NebulaResponse(500, msg).dict)
+        except Exception as e:
+            nebula.log.traceback()
+            result = {"response": 500, "message": str(e)}
+
+        if result is None:
+            result = {}
+
+        assert isinstance(result, dict), "Result is not a dict."
+        if "response" not in result:
+            result["response"] = 200
+
+        self.result({"response": 200, **result})
