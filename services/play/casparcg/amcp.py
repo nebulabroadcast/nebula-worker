@@ -58,7 +58,7 @@ class CasparCG:
     def query(self, query: str, **kwargs) -> str | None:
         """Send an AMCP command"""
         if self.lock.locked():
-            log.trace(f"Waiting for connection unlock: {query}")
+            log.trace(f"Waiting for CasparCG connection unlock: {query}")
         with self.lock:
             if not self.connection:
                 self.connect(**kwargs)
@@ -78,14 +78,14 @@ class CasparCG:
             except ConnectionResetError as e:
                 self.connection = None
                 raise CasparConnectionException(
-                    "Caspar connection reset by peer"
+                    "CasparCG connection reset by peer"
                 ) from e
             except BrokenPipeError as e:
                 self.connection = None
-                raise CasparConnectionException("Caspar connection broken") from e
+                raise CasparConnectionException("CasparCG connection broken") from e
             except Exception as e:
                 log.traceback()
-                raise CasparConnectionException("Caspar query failed") from e
+                raise CasparConnectionException("CasparCG query failed") from e
 
             result = result_bytes.decode("utf-8").strip()
 
@@ -110,8 +110,9 @@ class CasparCG:
                         # the original query
                         _ = self.connection.read_until(DELIM.encode("utf-8"))
 
-                    raise CasparException(f"CasparCG error: {result}")
-
+                    raise CasparException(f"{result} error in CasparCG query '{query}'")
+            except CasparException as e:
+                raise e
             except Exception as e:
-                raise CasparException(f"Malformed result: {result}") from e
-            raise CasparException(f"Unexpected result: {result}")
+                raise CasparException(f"Malformed CasparCG response: {result}") from e
+            raise CasparException(f"Unexpected CasparCG response: {result}")

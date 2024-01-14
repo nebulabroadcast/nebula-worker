@@ -97,7 +97,10 @@ class PlayoutPlugin:
         return f"{self.service.controller.caspar_channel}-{id_layer}"
 
     def query(self, query, **kwargs):
-        return self.service.controller.query(query, **kwargs)
+        try:
+            return self.service.controller.query(query, **kwargs)
+        except Exception as e:
+            log.error(f"Plugin '{self.name}': {e}")
 
     def main(self):
         if not self.busy:

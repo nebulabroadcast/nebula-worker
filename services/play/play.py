@@ -245,7 +245,7 @@ class Service(BaseService):
             if level > 5:
                 nebula.log.error("Cue it yourself....")
                 return None
-            nebula.log.warning(f"Unable to cue {item_next} ({e}). Trying next.")
+            nebula.log.warning(f"Unable to cue {item_next}: {e}. Trying next.")
             item_next = self.cue_next(item=item_next, db=db, level=level + 1, play=play)
         return item_next
 
@@ -392,7 +392,7 @@ class Service(BaseService):
             try:
                 plugin.on_change()
             except Exception:
-                nebula.log.traceback("Plugin on-change failed")
+                nebula.log.error("Plugin on-change: {e}")
 
     def on_live_enter(self):
         nebula.log.success("Entering a live event")

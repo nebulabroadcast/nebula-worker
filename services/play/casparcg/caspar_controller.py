@@ -261,15 +261,13 @@ class CasparController(BaseController):
 
         try:
             self.query(query)
-        except CasparException as e:
-            nebula.log.error(f"Unable to cue {fname} {e}")
-            message = f'Unable to cue "{fname}" {e}'
+        except CasparException:
             self.cued_item = None
             self.cued_fname = None
             self.cueing = False
             self.cueing_item = None
             self.cueing_time = 0
-            raise CasparException(message) from e
+            raise
 
         if play:
             self.cueing = False
