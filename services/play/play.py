@@ -303,7 +303,6 @@ class Service(BaseService):
         assert action, "Plugin action not specified"
 
         nebula.log.debug(f"Executing {plugin_name}.{action}")
-        assert plugin_name in self.plugins, f"Plugin {plugin_name} not active"
         plugin = self.plugins[plugin_name]
         assert plugin.on_command(action, data), "Plugin call failed"
 
