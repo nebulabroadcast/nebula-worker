@@ -4,15 +4,27 @@ import time
 from nxtools import FileObject
 
 import nebula
+from nebula.db import DB
 from nebula.enum import ObjectStatus
 from nebula.jobs import Job, send_to
+from nebula.objects import Asset
 
 from .common import ImportDefinition, create_error
 from .transcoder import ImportTranscoder
 
 
-def get_import_job(import_file, asset, action, service, db) -> Job | None:
+def get_import_job(
+    import_file: FileObject,
+    asset: Asset,
+    action,
+    service,
+    db: DB | None = None,
+) -> Job | None:
+    if not db:
+        db = DB()
+
     try:
+        assert asset.id, f"Asset {asset} has no id"
         id_job = send_to(
             id_asset=asset.id,
             id_action=action.action_id,
@@ -22,7 +34,7 @@ def get_import_job(import_file, asset, action, service, db) -> Job | None:
         )
     except Exception as e:
         create_error(import_file, f"Unable to create job for {asset}: {e}")
-        return
+        return None
 
     job = Job(id_job, db=db)
     job.set_progress(0, "Importing")
