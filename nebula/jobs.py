@@ -1,5 +1,6 @@
 import json
 import time
+from typing import Any
 
 from nxtools import xml
 
@@ -8,7 +9,6 @@ from nebula.enum import ContentType, JobState, MediaType, ObjectStatus
 from nebula.log import log
 from nebula.messaging import messaging
 from nebula.objects import Asset
-from nebula.response import NebulaResponse
 
 assert ObjectStatus
 assert ContentType
@@ -27,51 +27,54 @@ class Action:
         try:
             create_if = settings.findall("create_if")[0]
         except IndexError:
-            self.create_if = False
+            self.create_if = None
         else:
             if create_if is not None:
                 if create_if.text:
                     self.create_if = create_if.text
                 else:
-                    self.create_if = False
+                    self.create_if = None
 
         try:
             start_if = settings.findall("start_if")[0]
         except IndexError:
-            self.start_if = False
+            self.start_if = None
         else:
             if start_if is not None:
                 if start_if.text:
                     self.start_if = start_if.text
                 else:
-                    self.start_if = False
+                    self.start_if = None
 
         try:
             skip_if = settings.findall("skip_if")[0]
         except IndexError:
-            self.skip_if = False
+            self.skip_if = None
         else:
             if skip_if is not None:
                 if skip_if.text:
                     self.skip_if = skip_if.text
                 else:
-                    self.skip_if = False
+                    self.skip_if = None
 
     @property
     def created_key(self):
         return f"job_created/{self.id}"
 
-    def should_create(self, asset):
+    def should_create(self, asset: Asset):
+        _ = asset
         if self.create_if:
             return eval(self.create_if)
         return False
 
-    def should_start(self, asset):
+    def should_start(self, asset: Asset):
+        _ = asset
         if self.start_if:
             return eval(self.start_if)
         return True
 
-    def should_skip(self, asset):
+    def should_skip(self, asset: Asset):
+        _ = asset
         if self.skip_if:
             return eval(self.skip_if)
         return False
@@ -81,7 +84,7 @@ class Actions:
     def __init__(self):
         self.data = {}
 
-    def load(self, id_action):
+    def load(self, id_action: int):
         db = DB()
         db.query("SELECT title, settings FROM actions WHERE id = %s", [id_action])
         for title, settings in db.fetchall():
@@ -97,7 +100,18 @@ actions = Actions()
 
 
 class Job:
-    def __init__(self, id, db=False):
+    _asset: Asset | None = None
+    _settings: dict[str, Any] | None = None
+    _action: Action | None = None
+    _db: DB | None = None
+
+    id_service: int | None = None
+    id_user: int | None = None
+    priority: int = 3
+    retries: int = 0
+    status: JobState = JobState.PENDING
+
+    def __init__(self, id: int, db: DB | None = None):
         self._db = db
         self.id = id
         self.id_service = None
@@ -105,28 +119,28 @@ class Job:
         self.priority = 3
         self.retries = 0
         self.status = JobState.PENDING
-        self._asset = None
-        self._settings = None
-        self._action = None
 
     @property
-    def id_asset(self):
+    def id_asset(self) -> int:
+        assert self.asset and self.asset.id
         return self.asset.id
 
     @property
-    def id_action(self):
+    def id_action(self) -> int:
+        assert self.action and self.action.id
         return self.action.id
 
     @property
-    def db(self):
+    def db(self) -> DB:
         if not self._db:
             self._db = DB()
         return self._db
 
     @property
-    def asset(self):
+    def asset(self) -> Asset:
         if self._asset is None:
             self.load()
+        assert self._asset
         return self._asset
 
     @property
@@ -142,6 +156,7 @@ class Job:
         return self._action
 
     def __repr__(self):
+        assert self.action
         return f"job ID:{self.id} [{self.action.title}@{self.asset}]"
 
     def load(self):
@@ -341,6 +356,7 @@ class Job:
         )
 
     def done(self, message="Completed"):
+        assert self.action
         now = time.time()
         self.db.query(
             """
@@ -368,11 +384,12 @@ class Job:
         )
 
 
-def get_job(id_service, action_ids, db=False):
+def get_job(id_service: int, action_ids: list[int], db: DB | None = None):
     assert isinstance(action_ids, list), "action_ids must be list of integers"
     if not action_ids:
         return False
-    db = db or DB()
+    if db is None:
+        db = DB()
     now = time.time()
 
     running_jobs_count = {}
@@ -465,6 +482,7 @@ def get_job(id_service, action_ids, db=False):
                 log.error(
                     f"Invalid run_on value for action {action}: {run_on_tag.text}"
                 )
+                continue
             run_on_services.extend(value)
 
         if run_on_services and (id_service not in run_on_services):
@@ -523,19 +541,20 @@ def get_job(id_service, action_ids, db=False):
 
 
 def send_to(
-    id_asset,
-    id_action,
-    id_service=None,
-    settings=None,
-    id_user=None,
-    priority=3,
-    restart_existing=True,
-    restart_running=False,
-    db=False,
-):
-    db = db or DB()
-    if not id_asset:
-        NebulaResponse(401, message="You must specify existing object")
+    id_asset: int,
+    id_action: int,
+    id_service: int | None = None,
+    settings: dict[str, Any] | None = None,
+    id_user: int | None = None,
+    priority: int = 3,
+    restart_existing: bool = True,
+    restart_running: bool = False,
+    db: DB | None = None,
+) -> int:
+    if db is None:
+        db = DB()
+
+    assert id_asset, "You must specify an existing object"
 
     if settings is None:
         settings = {}
@@ -581,14 +600,14 @@ def send_to(
                     id_action=id_action,
                     progress=0,
                 )
-                return NebulaResponse(201, message="Job restarted", id=res[0][0])
-            return NebulaResponse(
-                200, message="Job exists. Not restarting", id=res[0][0]
-            )
+                log.trace(f"Restarted job {res[0][0]}")
+                return res[0][0]
+            log.trace(f"Job {res[0][0]} is running. Not restarting")
+            return res[0][0]
+
         else:
-            return NebulaResponse(
-                200, message="Job exists. Not restarting", id=res[0][0]
-            )
+            log.trace(f"Job {res[0][0]} exists. Not restarting")
+            return res[0][0]
 
     #
     # Create a new job
@@ -630,9 +649,9 @@ def send_to(
     try:
         id_job = db.fetchall()[0][0]
         db.commit()
-    except Exception:
+    except Exception as e:
         log.traceback()
-        return NebulaResponse(500, "Unable to create job")
+        raise Exception("Unable to create job") from e
 
     messaging.send(
         "job_progress",
@@ -642,4 +661,4 @@ def send_to(
         progress=0,
         message="Job created",
     )
-    return NebulaResponse(201, message="Job created", id=id_job)
+    return id_job

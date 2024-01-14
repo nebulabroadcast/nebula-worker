@@ -92,12 +92,22 @@ class PlayoutStorageTool:
         for asset, scheduled in get_scheduled_assets(self.id_channel, db=db):
             old_status = asset.get(self.status_key, DEFAULT_STATUS)
 
+            if not asset.id:
+                nebula.log.error(f"Asset {asset} has no id")
+                continue
+
+            full_playout_path = asset.get_playout_full_path(self.id_channel)
+            if not full_playout_path:
+                nebula.log.error(f"Asset {asset} has no playout path")
+                continue
+
             # read playout file props
             try:
-                fs = os.stat(asset.get_playout_full_path(self.id_channel))
+                fs = os.stat(full_playout_path)
                 file_exists = stat.S_ISREG(fs[stat.ST_MODE])
             except FileNotFoundError:
                 file_exists = False
+                continue
 
             if file_exists:
                 file_size = fs[stat.ST_SIZE]
@@ -156,17 +166,20 @@ class PlayoutStorageTool:
                 and asset["status"] == ObjectStatus.ONLINE
                 and scheduled
             ):
-                result = send_to(
-                    asset.id,
-                    self.send_action,
-                    restart_existing=True,
-                    restart_running=False,
-                    priority=4,
-                    db=db,
-                )
-                chtitle = self.playout_config.name
-                if result.response == 201:
-                    nebula.log.info(f"Sending {asset} to {chtitle}: {result.message}")
+                try:
+                    send_to(
+                        asset.id,
+                        self.send_action,
+                        restart_existing=True,
+                        restart_running=False,
+                        priority=4,
+                        db=db,
+                    )
+                except Exception:
+                    nebula.log.traceback()
+                else:
+                    chtitle = self.playout_config.name
+                    nebula.log.info(f"Sending {asset} to {chtitle}")
 
 
 class Service(BaseService):

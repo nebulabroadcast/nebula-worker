@@ -1,7 +1,6 @@
 import enum
 import sys
 import traceback
-
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:

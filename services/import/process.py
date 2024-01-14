@@ -11,22 +11,17 @@ from .common import ImportDefinition, create_error
 from .transcoder import ImportTranscoder
 
 
-def get_import_job(import_file, asset, action, service, db):
-    res = send_to(
-        id_asset=asset.id,
-        id_action=action.action_id,
-        id_service=service,
-        restart_existing=True,
-        db=db,
-    )
-
-    if not res:
-        create_error(import_file, f"Unable to create job for {asset}")
-        return
-
-    id_job = res.get("id")
-    if not id_job:
-        create_error(import_file, f"Unable to get job ID for {asset}")
+def get_import_job(import_file, asset, action, service, db) -> Job | None:
+    try:
+        id_job = send_to(
+            id_asset=asset.id,
+            id_action=action.action_id,
+            id_service=service,
+            restart_existing=True,
+            db=db,
+        )
+    except Exception as e:
+        create_error(import_file, f"Unable to create job for {asset}: {e}")
         return
 
     job = Job(id_job, db=db)
@@ -65,6 +60,8 @@ def import_asset(
     nebula.log.info(f"Importing {import_file} to {asset}")
 
     job = get_import_job(import_file, asset, action, service.id_service, db)
+    if job is None:
+        return False
     db.query(
         """
         UPDATE jobs SET
