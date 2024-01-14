@@ -55,6 +55,7 @@ def mediainfo(path: str) -> MediaInfo:
     except Exception as e:
         raise Exception(f"Error while running {command}: {e}") from e
 
+    video_track: VideoTrack | None = None
     audio_tracks = []
     duration = 0.0
     for track in data["media"]["track"]:
@@ -79,6 +80,8 @@ def mediainfo(path: str) -> MediaInfo:
                 sample_rate=track["SamplingRate"],
             )
             audio_tracks.append(audio_track)
+
+    assert video_track is not None, "No video track found"
 
     return MediaInfo(
         duration=duration,

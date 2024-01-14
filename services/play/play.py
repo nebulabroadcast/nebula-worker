@@ -44,8 +44,8 @@ class Service(BaseService):
 
     def on_init(self):
         channel_tag = self.settings.find("id_channel")
-        assert channel_tag.text, "No channel specified"
-        id_channel = int(channel_tag.text)
+        assert channel_tag.text, "No channel specified"  # type: ignore
+        id_channel = int(channel_tag.text)  # type: ignore
 
         channel = nebula.settings.get_playout_channel(id_channel)
 
@@ -59,11 +59,11 @@ class Service(BaseService):
 
         self.fps = float(self.channel.fps)
 
-        self.last_run = False
-        self.last_info = 0
-        self.current_live = False
-        self.cued_live = False
-        self.auto_event = 0
+        self.last_run: int | None = None
+        self.last_info: float = 0
+        self.current_live: bool = False
+        self.cued_live: bool = False
+        self.auto_event: int | None = None
 
         self.status_key = f"playout_status/{self.channel.id}"
 
@@ -130,11 +130,14 @@ class Service(BaseService):
 
         if item["item_role"] == "live":
             fname = self.channel.config.get("live_source")
-            assert fname is None, "Live source is not configured"
             nebula.log.info("Next is item is live")
-            response = self.controller.cue(fname, item, **kwargs)
-            if response.is_success:
-                self.cued_live = True
+            assert fname is not None, "Live source is not configured"
+            try:
+                response = self.controller.cue(fname, item, **kwargs)
+            except Exception as e:
+                nebula.log.error(f"Unable to cue live source: {e}")
+                raise e
+            self.cued_live = True
             return response
 
         assert item["id_asset"], f"Unable to cue virtual {item}"
@@ -363,7 +366,7 @@ class Service(BaseService):
 
         nebula.log.info(f"Advanced to {self.current_item}")
 
-        if self.last_run:
+        if self.last_run is not None:
             db.query(
                 """
                 UPDATE asrun SET stop = %s
@@ -383,7 +386,7 @@ class Service(BaseService):
             self.last_run = db.lastid()
             db.commit()
         else:
-            self.last_run = False
+            self.last_run = None
 
         for plugin in self.plugins:
             try:
@@ -440,7 +443,7 @@ class Service(BaseService):
         try:
             next_event = nebula.Event(meta=db.fetchall()[0][1], db=db)
         except IndexError:
-            self.auto_event = False
+            self.auto_event = None
             return
 
         if self.auto_event == next_event.id:
@@ -451,7 +454,10 @@ class Service(BaseService):
         if not run_mode:
             return
 
-        elif not next_event.bin.items:
+        assert next_event.bin, "Next event has no bin loaded"
+        assert current_event.bin, "Current event has no bin loaded"
+
+        if not next_event.bin.items:
             return
 
         elif run_mode == RunMode.RUN_MANUAL:

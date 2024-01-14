@@ -1,4 +1,5 @@
 import time
+from typing import Any
 from urllib.parse import urlparse
 
 import psycopg2
@@ -10,7 +11,7 @@ NEBULA_IS_INSTALLED: bool = False
 
 
 class DB:
-    def __init__(self):
+    def __init__(self) -> None:
         result = urlparse(config.postgres)
         global NEBULA_IS_INSTALLED
 
@@ -52,11 +53,13 @@ class DB:
                     NEBULA_IS_INSTALLED = True
                     break
 
-    def lastid(self):
+    def lastid(self) -> int:
         self.query("SELECT LASTVAL()")
-        return self.fetchall()[0][0]
+        for row in self.fetchall():
+            return row[0]
+        raise Exception("Unable to get last id")
 
-    def query(self, query, *args):
+    def query(self, query: str, *args: Any) -> None:
         self.cur.execute(query, *args)
 
     def fetchone(self):
@@ -65,14 +68,14 @@ class DB:
     def fetchall(self):
         return self.cur.fetchall()
 
-    def commit(self):
+    def commit(self) -> None:
         self.conn.commit()
 
-    def rollback(self):
+    def rollback(self) -> None:
         self.conn.rollback()
 
-    def close(self):
+    def close(self) -> None:
         self.conn.close()
 
-    def __len__(self):
+    def __bool__(self) -> bool:
         return True

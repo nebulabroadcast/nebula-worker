@@ -2,17 +2,21 @@ import imp
 import os
 import sys
 import time
+from typing import TYPE_CHECKING, Optional
 
 import nebula
 from nebula.base_service import BaseService
 from nebula.plugins import get_plugin_path
 
+if TYPE_CHECKING:
+    from nebula.plugins.worker import WorkerPlugin
+
 
 class Service(BaseService):
     def on_init(self):
-        self.exec_init = False
-        self.exec_main = False
-        self.plugin = False
+        self.exec_init: str | None = None
+        self.exec_main: str | None = None
+        self.plugin: Optional["WorkerPlugin"] = None
 
         if "script" in self.settings.attrib:
             fname = self.settings.attrib["script"]
@@ -24,7 +28,7 @@ class Service(BaseService):
             nebula.log.error("Unable to load worker. Shutting down")
             self.shutdown(no_restart=True)
 
-    def load_from_script(self, fname):
+    def load_from_script(self, fname: str) -> bool:
         if not fname.lower().endswith(".py"):
             fname += ".py"
         workerdir = get_plugin_path("worker")
@@ -33,7 +37,7 @@ class Service(BaseService):
             time.sleep(5)
             sys.exit(0)
         script_path = os.path.join(workerdir, fname)
-        mod_name, file_ext = os.path.splitext(fname)
+        mod_name, _ = os.path.splitext(fname)
 
         if not os.path.exists(script_path):
             nebula.log.error(f"Plugin {fname} not found")
@@ -47,20 +51,21 @@ class Service(BaseService):
 
         nebula.log.debug(f"Loading plugin {mod_name}")
         self.plugin = py_mod.Plugin(self)
+        if not self.plugin:
+            nebula.log.error(f"Unable to load plugin {mod_name}")
+            return False
         self.plugin.on_init()
         return True
 
     def load_from_settings(self):
-        try:
-            self.exec_init = self.settings.find("init").text
-        except Exception:
-            pass
-        try:
-            self.exec_main = self.settings.find("main").text
-        except Exception:
-            pass
-        if self.exec_init:
+        exec_init = self.settings.find("init")
+        if exec_init and exec_init.text:
+            self.exec_init = exec_init.text
             exec(self.exec_init)
+
+        exec_main = self.settings.find("main")
+        if exec_main and exec_main.text:
+            self.exec_main = exec_main.text
         return True
 
     def on_main(self):

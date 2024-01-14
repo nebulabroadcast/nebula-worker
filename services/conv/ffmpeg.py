@@ -88,8 +88,10 @@ class NebulaFFMPEG(BaseEncoder):
                     self.ffparams.append(target_path)
 
     @property
-    def is_running(self):
-        return bool(self.proc) and self.proc.poll() is None
+    def is_running(self) -> bool:
+        if not self.proc:
+            return False
+        return self.proc.poll() is None
 
     def start(self) -> None:
         cmd = ["ffmpeg", "-hide_banner"]

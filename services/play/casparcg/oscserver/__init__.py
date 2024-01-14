@@ -1,7 +1,6 @@
 import socketserver
 from socket import socket
-from types import FunctionType
-from typing import Any, Tuple
+from typing import Any, Callable, Tuple
 
 from .bundle import _BUNDLE_PREFIX
 from .osc_types import OSCParseError
@@ -23,7 +22,7 @@ class OSCHandler(socketserver.BaseRequestHandler):
 
 
 class OSCServer(socketserver.UDPServer):
-    def __init__(self, host: str, port: int, handler: FunctionType) -> None:
+    def __init__(self, host: str, port: int, handler: Callable) -> None:
         self.handle = handler
         super().__init__((host, port), OSCHandler)
 

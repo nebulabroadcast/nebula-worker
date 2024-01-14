@@ -3,6 +3,7 @@ import queue
 import socket
 import threading
 import time
+from typing import Any
 
 import redis
 
@@ -16,7 +17,7 @@ class Messaging:
     def __init__(self):
         self.connection = None
         self.channel = None
-        self.queue = queue.Queue()
+        self.queue: queue.Queue[Any] = queue.Queue()
 
         self.main_loop = threading.Thread(target=self.send_thread)
         self.main_loop.daemon = True

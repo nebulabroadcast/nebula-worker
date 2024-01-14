@@ -245,8 +245,8 @@ class BaseObject:
 
     def _insert(self, **kwargs):
         _ = kwargs
-        cols = []
-        vals = []
+        cols: list[str] = []
+        vals: list[Any] = []
         if self.id:
             cols.append("id")
             vals.append(self.id)
@@ -280,8 +280,8 @@ class BaseObject:
     def _update(self, **kwargs):
         _ = kwargs
         assert self.id, "Unable to update object, no ID"
-        cols = ["meta"]
-        vals = [json.dumps(self.meta)]
+        cols: list[str] = ["meta"]
+        vals: list[Any] = [json.dumps(self.meta)]
 
         for col in self.db_cols:
             cols.append(col)

@@ -1,7 +1,7 @@
 import enum
 import sys
 import traceback
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from nebula.messaging import Messaging
@@ -28,7 +28,12 @@ class Logger:
     level = LogLevel.DEBUG
     messaging: Optional["Messaging"] = None
 
-    def __call__(self, level: LogLevel, *args, **kwargs):
+    def __call__(
+        self,
+        level: LogLevel,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         if level < self.level:
             return
 
@@ -50,28 +55,28 @@ class Logger:
                 message=msg,
             )
 
-    def trace(self, *args, **kwargs):
+    def trace(self, *args: Any, **kwargs: Any) -> None:
         self(LogLevel.TRACE, *args, **kwargs)
 
-    def debug(self, *args, **kwargs):
+    def debug(self, *args: Any, **kwargs: Any) -> None:
         self(LogLevel.DEBUG, *args, **kwargs)
 
-    def info(self, *args, **kwargs):
+    def info(self, *args: Any, **kwargs: Any) -> None:
         self(LogLevel.INFO, *args, **kwargs)
 
-    def success(self, *args, **kwargs):
+    def success(self, *args: Any, **kwargs: Any) -> None:
         self(LogLevel.SUCCESS, *args, **kwargs)
 
-    def warn(self, *args, **kwargs):
+    def warn(self, *args: Any, **kwargs: Any) -> None:
         self(LogLevel.WARNING, *args, **kwargs)
 
-    def warning(self, *args, **kwargs):
+    def warning(self, *args: Any, **kwargs: Any) -> None:
         self(LogLevel.WARNING, *args, **kwargs)
 
-    def error(self, *args, **kwargs):
+    def error(self, *args: Any, **kwargs: Any) -> None:
         self(LogLevel.ERROR, *args, **kwargs)
 
-    def traceback(self, *args, **kwargs) -> str:
+    def traceback(self, *args: Any, **kwargs: Any) -> str:
         msg = " ".join([str(arg) for arg in args])
         tb = traceback.format_exc()
         msg = f"{msg}\n\n{indent(tb)}"

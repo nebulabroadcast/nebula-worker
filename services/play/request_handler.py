@@ -30,7 +30,10 @@ class PlayoutRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         ctype = self.headers.get("content-type")
         if ctype != "application/json":
-            self.error(400, "Play service received a bad request.")
+            self.result(
+                {"response": 400, "message": "Play service received a bad request."},
+                response=400,
+            )
             return
 
         length = int(self.headers.get("content-length", -1))
@@ -40,7 +43,13 @@ class PlayoutRequestHandler(BaseHTTPRequestHandler):
         method = self.path.lstrip("/").split("/")[0]
 
         if method not in self.server.methods:
-            self.error(501, f"Method {method} is not implemented.")
+            self.result(
+                {
+                    "response": 501,
+                    "message": f"Playout service does not support {method}",
+                },
+                response=501,
+            )
             return
 
         result: dict[str, Any] | None = None

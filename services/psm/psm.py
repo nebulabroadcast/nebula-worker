@@ -145,8 +145,8 @@ class PlayoutStorageTool:
                             file_status = ObjectStatus.CORRUPTED
 
             if ostatus != file_status or omtime != file_mtime or osize != file_size:
-                fs = ObjectStatus(file_status).name
-                nebula.log.info(f"Set {asset} playout status to {fs}")
+                asset_status = ObjectStatus(file_status).name
+                nebula.log.info(f"Set {asset} playout status to {asset_status}")
                 asset[self.status_key] = {
                     "status": file_status,
                     "size": file_size,

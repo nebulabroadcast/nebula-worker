@@ -1,5 +1,6 @@
 import os
 import time
+from typing import Literal
 
 from nxtools import FileObject
 
@@ -15,6 +16,8 @@ from .ffprobe import ffprobe_asset
 
 
 class Service(BaseService):
+    restart_on_update: Literal["all"] | list[int] | None
+
     def on_init(self):
         self.conds = []
         rou = self.settings.attrib.get("restart_on_update", "all")

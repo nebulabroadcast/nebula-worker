@@ -125,7 +125,7 @@ class VlcController(BaseController):
 
     @property
     def id_channel(self):
-        return self.parent.id_channel
+        return self.parent.channel.id
 
     @property
     def fps(self):
@@ -202,8 +202,9 @@ class VlcController(BaseController):
     def take(self, **kwargs):
         _ = kwargs
         assert self.cued_item, "No item is cued"
+        assert self.media_player, "No media player"
 
-        self.media_player.set_media(self.cued.media)
+        self.media_player.set_media(self.cued.media)  # type: ignore
         self.media_player.play()
 
         self.current = self.cued

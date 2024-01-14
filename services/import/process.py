@@ -85,7 +85,9 @@ def import_asset(
     )
     db.commit()
 
-    def progress_handler(progress):
+    def progress_handler(progress: float) -> None:
+        if not job:
+            return
         job.set_progress(progress, f"Importing {progress:.02f}%")
 
     if not ensure_target(asset.file_path):
