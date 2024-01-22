@@ -33,13 +33,3 @@ jobs:
           push: true
           tags: |
             nebulabroadcast/nebula-worker:dev
-
-      - name: Create a release
-        uses: ncipollo/release-action@v1
-        with:
-          tag: v${{ steps.get_version.outputs.value }}
-          name: Nebula worker ${{ steps.get_version.outputs.value }}
-          body: Nebula worker version ${{ steps.get_version.outputs.value }}
-          allowUpdates: true
-          draft: true
-          prerelease: false
