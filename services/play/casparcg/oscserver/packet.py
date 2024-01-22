@@ -16,7 +16,8 @@ from .osc_types import IMMEDIATELY, OSCParseError
 #    in seconds since the epoch.
 # 2) the actual message.
 TimedMessage = collections.namedtuple(
-    typename="TimedMessage", field_names=("time", "message")
+    "TimedMessage",
+    ("time", "message"),
 )
 
 
@@ -62,8 +63,8 @@ class OSCPacket(object):
                 raise OSCParseError(
                     "OSC Packet should at least contain an OscMessage or an OscBundle."
                 )
-        except (OSCParseError) as pe:
-            raise OSCParseError(f"Could not parse packet {pe}")
+        except OSCParseError as pe:
+            raise OSCParseError(f"Could not parse packet {pe}") from pe
 
     @property
     def messages(self) -> List[TimedMessage]:

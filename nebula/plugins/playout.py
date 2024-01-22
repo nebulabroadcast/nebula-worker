@@ -25,7 +25,7 @@ class PlayoutPluginSlot(BaseModel):
 
     @property
     def title(self):
-        return self.opts.get("title", self.name.capitalize())
+        return self.name.capitalize()
 
 
 class PlayoutPluginManifest(BaseModel):
@@ -58,11 +58,11 @@ class PlayoutPlugin:
         return f"playout plugin '{self.title}'"
 
     @property
-    def manifest(self):
+    def manifest(self) -> PlayoutPluginManifest:
         return PlayoutPluginManifest(
             name=self.name,
             title=self.title or self.name.capitalize(),
-            slots=[slot.dict() for slot in self.slots],
+            slots=self.slots,
         )
 
     @property
@@ -92,10 +92,15 @@ class PlayoutPlugin:
     def layer(self, id_layer: int | None = None) -> str:
         if id_layer is None:
             id_layer = self.id_layer
+        if not hasattr(self.service.controller, "caspar_channel"):
+            return ""
         return f"{self.service.controller.caspar_channel}-{id_layer}"
 
     def query(self, query, **kwargs):
-        return self.service.controller.query(query, **kwargs)
+        try:
+            return self.service.controller.query(query, **kwargs)
+        except Exception as e:
+            log.error(f"Plugin '{self.name}': {e}")
 
     def main(self):
         if not self.busy:

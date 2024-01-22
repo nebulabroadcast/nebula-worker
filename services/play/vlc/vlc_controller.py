@@ -4,7 +4,7 @@ import time
 import vlc
 from nxtools import log_traceback, logging
 
-from nebula.response import NebulaResponse
+from ..base_controller import BaseController
 
 
 class VlcMedia:
@@ -60,7 +60,9 @@ class VlcMedia:
         return self.mark_out * 1000
 
 
-class VlcController:
+class VlcController(BaseController):
+    loop: bool = False
+
     def __init__(self, parent):
         self.parent = parent
 
@@ -123,7 +125,7 @@ class VlcController:
 
     @property
     def id_channel(self):
-        return self.parent.id_channel
+        return self.parent.channel.id
 
     @property
     def fps(self):
@@ -189,21 +191,20 @@ class VlcController:
         if play:
             return self.take()
 
-        message = "Cued item {} ({})".format(self.cued_item, full_path)
-
-        return NebulaResponse(200, message)
+        # message = "Cued item {} ({})".format(self.cued_item, full_path)
 
     def clear(self, **kwargs):
+        _ = kwargs
         self.media_player.stop()
         self.current = None
         self.cued = None
-        return NebulaResponse(200, "all items removed")
 
     def take(self, **kwargs):
-        if not self.cued_item:
-            return NebulaResponse(400, "Unable to take. No item is cued.")
+        _ = kwargs
+        assert self.cued_item, "No item is cued"
+        assert self.media_player, "No media player"
 
-        self.media_player.set_media(self.cued.media)
+        self.media_player.set_media(self.cued.media)  # type: ignore
         self.media_player.play()
 
         self.current = self.cued
@@ -215,38 +216,31 @@ class VlcController:
         if True:
             if self.parent.current_live:
                 self.parent.on_live_leave()
-            code = 200
-            message = "Take OK"
-        else:
-            code = 500
-            message = "Take command failed"
-        return NebulaResponse(code, message)
+        #     code = 200
+        #     message = "Take OK"
+        # else:
+        #     code = 500
+        #     message = "Take command failed"
 
     def retake(self, **kwargs):
-        if self.parent.current_live:
-            return NebulaResponse(409, "Unable to retake live item")
-        if not self.current:
-            return NebulaResponse(400, "Unable to retake. No item is playing.")
+        _ = kwargs
+        assert not self.parent.current_live, "Unable to retake live item"
+        assert self.current, "Unable to retake. No item is playing.a"
         self.media_player.set_time(self.current.mark_in_ms)
-        message = "Retake OK"
         self.parent.cue_next()
-        return NebulaResponse(200, message)
 
     def freeze(self, **kwargs):
-        if self.parent.current_live:
-            return NebulaResponse(409, "Unable to freeze live item")
+        _ = kwargs
+        assert not self.parent.current_live, "Unable to freeze live item"
         if not self.paused:
             self.media_player.set_pause(True)
-            message = "Playback paused"
+            # message = "Playback paused"
         else:
             self.media_player.set_pause(False)
-            message = "Playback resumed"
-
-        return NebulaResponse(200, message)
+            # message = "Playback resumed"
 
     def abort(self, **kwargs):
-        if not self.cued:
-            return NebulaResponse(400, "Unable to abort. No item is cued.")
+        _ = kwargs
+        assert self.cued, "Unable to abort. No item is cued."
         self.media_player.next()
         self.media_player.set_pause(True)
-        return NebulaResponse(200, "Current item aborted")

@@ -103,7 +103,7 @@ class CasparOSCServer:
         if not self.first_message_arrived:
             nebula.log.info("OSC connection established")
             self.first_message_arrived = True
-        if type(address) == str:
+        if isinstance(address, str):
             address = address.split("/")
         if len(address) < 2:
             return False

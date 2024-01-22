@@ -48,14 +48,12 @@ class Watchfolder:
         return os.path.isdir(self.path)
 
     def get_files(self) -> Generator[FileObject, None, None]:
-
         for file_object in get_files(
             self.path,
             recursive=self.recursive,
             hidden=self.hidden,
             case_sensitive_exts=self.case_sensitive_exts,
         ):
-
             if not file_object.size:
                 continue
 
@@ -104,7 +102,7 @@ class Service(BaseService):
                 if ext not in FileTypes.exts():
                     continue
 
-                asset = asset_by_path(watchfolder.id_storage, asset_path, db=db)
+                asset = asset_by_path(watchfolder.id_storage, asset_path, db=db)  # type: ignore
                 if asset:
                     self.existing.append(full_path)
                     continue
@@ -126,6 +124,8 @@ class Service(BaseService):
 
                 failed = False
                 for post_script in wf_settings.findall("post"):
+                    if post_script.text is None:
+                        continue
                     try:
                         exec(post_script.text)
                     except Exception:

@@ -76,7 +76,7 @@ class ServiceMonitor(BaseAgent):
         # Real service state
         #
 
-        service_list = [i for i in self.services.keys()]
+        service_list = list(self.services.keys())
         for id_service in service_list:
             proc, title = self.services[id_service]
             if proc.poll() is None:
@@ -92,13 +92,13 @@ class ServiceMonitor(BaseAgent):
 
         db.query(
             """
-            SELECT id, title, state, autostart
+            SELECT id, title
             FROM services
             WHERE host=%s AND state=0 AND autostart=true
             """,
             [HOSTNAME],
         )
-        for id, title, state, autostart in db.fetchall():
+        for id, title in db.fetchall():
             if id not in self.services.keys():
                 nebula.log.debug(f"AutoStarting service ID {id} ({title})")
                 self.start_service(id, title)

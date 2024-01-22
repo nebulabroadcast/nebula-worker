@@ -27,7 +27,7 @@ def get_server_settings() -> ServerSettings:
     # System settings
 
     db.query("SELECT key, value FROM settings")
-    result["system"] = {key: value for key, value in db.fetchall()}
+    result["system"] = dict(db.fetchall())
     result["system"]["site_name"] = config.site_name
 
     # Storages

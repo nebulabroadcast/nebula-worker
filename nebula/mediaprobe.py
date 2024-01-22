@@ -80,7 +80,7 @@ def find_start_timecode(dump):
         dump["format"].get("timecode", "00:00:00:00"),
     ]
     tc = "00:00:00:00"
-    for i, tcp in enumerate(tc_places):
+    for tcp in tc_places:
         if tcp != "00:00:00:00":
             tc = tcp
             break

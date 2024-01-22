@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 import nebula
 
 
-def create_error(import_file: FileObject, message: str):
+def create_error(import_file: FileObject, message: str) -> None:
     """Create a sidecar file with the error message for the import file."""
     dir_name = import_file.dir_name
     message_path = os.path.join(dir_name, f"{import_file.base_name}.txt")
@@ -14,7 +14,7 @@ def create_error(import_file: FileObject, message: str):
     if os.path.exists(message_path):
         original_message = open(message_path).read()
         if original_message == message:
-            return
+            return None
 
     nebula.log.error(message)
     with open(message_path, "w") as f:

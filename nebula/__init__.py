@@ -8,7 +8,7 @@ if "--version" in sys.argv:
 
 from nebula.config import config
 from nebula.db import DB
-from nebula.log import log, LogLevel
+from nebula.log import LogLevel, log
 from nebula.messaging import messaging
 from nebula.objects import Asset, Bin, Event, Item, User
 from nebula.settings import load_settings, settings

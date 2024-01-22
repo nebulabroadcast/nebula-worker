@@ -54,7 +54,7 @@ class PlayoutPlugins:
     def __iter__(self):
         return self.plugins.__iter__()
 
-    def __getitem__(self, name: str):
+    def __getitem__(self, name: str) -> PlayoutPlugin:
         for plugin in self.plugins:
             if plugin.name == name:
                 return plugin

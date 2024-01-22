@@ -1,13 +1,13 @@
 import threading
 import time
 from http.server import HTTPServer
+from typing import Any
 
 import nebula
 from nebula.base_service import BaseService
 from nebula.db import DB
 from nebula.enum import ObjectStatus, RunMode
 from nebula.helpers import get_item_event, get_next_item
-from nebula.response import NebulaResponse
 from services.play.plugins import PlayoutPlugins
 from services.play.request_handler import PlayoutRequestHandler
 
@@ -32,27 +32,38 @@ def create_controller(parent):
         return CasparController(parent)
 
 
-class Service(BaseService):
-    def on_init(self):
-        id_channel = int(self.settings.find("id_channel").text)
-        self.channel = nebula.settings.get_playout_channel(id_channel)
+class PlayoutHTTPServer(HTTPServer):
+    service: "Service"
+    methods: dict[str, Any]
 
-        if self.channel is None:
+
+class Service(BaseService):
+    current_item: nebula.Item | None = None
+    current_asset: nebula.Asset | None = None
+    current_event: nebula.Event | None = None
+
+    def on_init(self):
+        channel_tag = self.settings.find("id_channel")
+        assert channel_tag.text, "No channel specified"  # type: ignore
+        id_channel = int(channel_tag.text)  # type: ignore
+
+        channel = nebula.settings.get_playout_channel(id_channel)
+
+        if channel is None:
             nebula.log.error("No playout channel configured")
             self.shutdown(no_restart=True)
             return
 
+        self.channel = channel
+        assert self.channel.controller_port, "No controller port configured"
+
         self.fps = float(self.channel.fps)
 
-        self.current_item: nebula.Item | None = None
-        self.current_asset: nebula.Asset | None = None
-        self.current_event: nebula.Event | None = None
-
-        self.last_run = False
-        self.last_info = 0
-        self.current_live = False
-        self.cued_live = False
-        self.auto_event = 0
+        self.last_run: int | None = None
+        self.last_info: float = 0
+        self.current_live: bool = False
+        self.cued_live: bool = False
+        self.auto_event: int | None = None
 
         self.status_key = f"playout_status/{self.channel.id}"
 
@@ -66,7 +77,7 @@ class Service(BaseService):
         port = int(self.channel.controller_port)
         nebula.log.info(f"Using port {port} for the HTTP interface.")
 
-        self.server = HTTPServer(("", port), PlayoutRequestHandler)
+        self.server = PlayoutHTTPServer(("", port), PlayoutRequestHandler)
         self.server.service = self
         self.server.methods = {
             "take": self.take,
@@ -100,36 +111,39 @@ class Service(BaseService):
     # API Commands
     #
 
-    def cue(self, **kwargs):
+    def cue(self, **kwargs) -> None:
         db = kwargs.get("db", DB())
+        assert self.channel, f"Unable to cue. Channel {self.channel.id} not found"
+        assert self.controller, "Unable to cue. Controller not found"
 
         if "item" in kwargs and isinstance(kwargs["item"], nebula.Item):
             item = kwargs["item"]
             del kwargs["item"]
         elif "id_item" in kwargs:
             item = nebula.Item(int(kwargs["id_item"]), db=db)
-            item.asset
+            _ = item.asset
             del kwargs["id_item"]
         else:
-            return NebulaResponse(400, "Unable to cue. No item specified")
+            raise AssertionError("Unable to cue. No item specified")
 
-        if not item:
-            return NebulaResponse(404, f"Unable to cue. {item} does not exist")
+        assert item, f"Unable to cue. Item {item} not found"
 
         if item["item_role"] == "live":
             fname = self.channel.config.get("live_source")
-            if fname is None:
-                return NebulaResponse(400, "Live source is not configured")
             nebula.log.info("Next is item is live")
-            response = self.controller.cue(fname, item, **kwargs)
-            if response.is_success:
-                self.cued_live = True
+            assert fname is not None, "Live source is not configured"
+            try:
+                response = self.controller.cue(fname, item, **kwargs)
+            except Exception as e:
+                nebula.log.error(f"Unable to cue live source: {e}")
+                raise e
+            self.cued_live = True
             return response
 
-        if not item["id_asset"]:
-            return NebulaResponse(400, f"Unable to cue virtual {item}")
+        assert item["id_asset"], f"Unable to cue virtual {item}"
 
         asset = item.asset
+        assert asset, f"Unable to cue. Asset {item['id_asset']} not found"
         playout_status = asset.get(self.status_key, DEFAULT_STATUS)["status"]
 
         kwargs["fname"] = kwargs["full_path"] = None
@@ -151,7 +165,7 @@ class Service(BaseService):
 
         if not kwargs["full_path"]:
             state = ObjectStatus(playout_status).name
-            return NebulaResponse(404, f"Unable to cue {state} playout file")
+            raise AssertionError(f"Unable to cue {state} playout file")
 
         kwargs["mark_in"] = item["mark_in"]
         kwargs["mark_out"] = item["mark_out"]
@@ -166,38 +180,58 @@ class Service(BaseService):
         self.cued_live = False
         return self.controller.cue(item=item, **kwargs)
 
-    def cue_forward(self, **kwargs):
+    def cue_forward(self, **kwargs) -> None:
+        _ = kwargs
+        assert self.controller, "Unable to cue. Controller not found"
         cc = self.controller.cued_item
-        if not cc:
-            return NebulaResponse(204)
+        assert cc, "Unable to cue cue_forward. No cued item"
         db = DB()
-        nc = get_next_item(cc.id, db=db, force="next")
+        nc = get_next_item(cc, db=db, force="next")
+        assert nc, "Unable to cue. No next item"
         return self.cue(item=nc, db=db)
 
-    def cue_backward(self, **kwargs):
+    def cue_backward(self, **kwargs) -> None:
+        _ = kwargs
+        assert self.controller, "Unable to cue. Controller not found"
         cc = self.controller.cued_item
-        if not cc:
-            return NebulaResponse(204)
+        assert cc, "Unable to cue cue_backward. No cued item"
         db = DB()
-        nc = get_next_item(cc.id, db=db, force="prev")
+        nc = get_next_item(cc, db=db, force="prev")
+        assert nc, "Unable to cue. No previous item"
         return self.cue(item=nc, db=db, level=5)
 
-    def cue_next(self, **kwargs):
-        nebula.log.info("Cueing the next item")
+    def cue_next(
+        self,
+        item: nebula.Item | None = None,
+        db: DB | None = None,
+        level: int = 0,
+        play: bool = False,
+    ) -> nebula.Item | None:
+        nebula.log.trace("Cueing the next item")
+        assert self.controller, "Unable to cue. Controller not found"
+
         # TODO: deprecate. controller should handle this
         self.controller.cueing = True
-        item = kwargs.get("item", self.controller.current_item)
-        level = kwargs.get("level", 0)
-        db = kwargs.get("db", DB())
-        play = kwargs.get("play", False)
+
+        if item is None:
+            item = self.controller.current_item
+
+        if db is None:
+            db = DB()
 
         if not item:
             nebula.log.warning("Unable to cue next item. No current clip")
-            return
+            return None
 
         item_next = get_next_item(
-            item.id, db=db, force_next_event=bool(self.auto_event)
+            item,
+            db=db,
+            force_next_event=bool(self.auto_event),
         )
+
+        if not item_next:
+            nebula.log.warning("Unable to cue next item. No next clip")
+            return None
 
         if item_next["run_mode"] == 1:
             auto = False
@@ -205,29 +239,31 @@ class Service(BaseService):
             auto = True
 
         nebula.log.info(f"Auto-cueing {item_next}")
-        result = self.cue(item=item_next, play=play, auto=auto)
-
-        if result.is_error:
+        try:
+            self.cue(item=item_next, play=play, auto=auto)
+        except Exception as e:
             if level > 5:
                 nebula.log.error("Cue it yourself....")
-                return False
-            nebula.log.warning(
-                f"Unable to cue {item_next} ({result.message}). Trying next."
-            )
+                return None
+            nebula.log.warning(f"Unable to cue {item_next}: {e}. Trying next.")
             item_next = self.cue_next(item=item_next, db=db, level=level + 1, play=play)
         return item_next
 
-    def take(self, **kwargs):
-        return self.controller.take(**kwargs)
+    def take(self, **kwargs) -> None:
+        assert self.controller, "Unable to take. Controller not found"
+        self.controller.take(**kwargs)
 
-    def freeze(self, **kwargs):
-        return self.controller.freeze(**kwargs)
+    def freeze(self, **kwargs) -> None:
+        assert self.controller, "Unable to freeze. Controller not found"
+        self.controller.freeze(**kwargs)
 
-    def retake(self, **kwargs):
-        return self.controller.retake(**kwargs)
+    def retake(self, **kwargs) -> None:
+        assert self.controller, "Unable to retake. Controller not found"
+        self.controller.retake(**kwargs)
 
-    def abort(self, **kwargs):
-        return self.controller.abort(**kwargs)
+    def abort(self, **kwargs) -> None:
+        assert self.controller, "Unable to abort. Controller not found"
+        self.controller.abort(**kwargs)
 
     def set(self, **kwargs):
         """Set a controller property.
@@ -236,45 +272,39 @@ class Service(BaseService):
             key (str): Name of the property
             value: Value to be set
         """
+        assert self.controller, "Unable to set. Controller not found"
         key = kwargs.get("key", None)
         value = kwargs.get("value", None)
-        if (key is None) or (value is None):
-            return NebulaResponse(400)
-        if hasattr(self.controller, "set"):
-            return self.controller.set(key, value)
-        return NebulaResponse(501)
+        assert key, "Unable to set. Key not specified"
+        assert value, "Unable to set. Value not specified"
+        assert hasattr(self.controller, "set"), "Unable to set. Method not found"
+        return self.controller.set(key, value)
 
-    def stat(self, **kwargs):
+    def stat(self, **kwargs) -> dict[str, Any]:
         """Returns current status of the playback"""
-        return NebulaResponse(200, data=self.playout_status)
+        _ = kwargs
+        return {"data": self.playout_status}
 
-    def plugin_list(self, **kwargs):
+    def plugin_list(self, **kwargs) -> dict[str, Any]:
+        _ = kwargs
         result = []
         for plugin in self.plugins:
             if not plugin.manifest.slots:
                 continue
             result.append(plugin.manifest.dict())
-        return NebulaResponse(200, plugins=result)
+        return {"plugins": result}
 
     def plugin_exec(self, **kwargs):
         plugin_name = kwargs.get("name", None)
         action = kwargs.get("action", None)
         data = kwargs.get("data", None)
 
-        if not (plugin_name and action):
-            return NebulaResponse(400, "plugin or action not specified")
+        assert plugin_name, "Plugin name not specified"
+        assert action, "Plugin action not specified"
 
         nebula.log.debug(f"Executing {plugin_name}.{action}")
-        try:
-            plugin = self.plugins[plugin_name]
-        except KeyError:
-            nebula.log.traceback()
-            return NebulaResponse(400, f"Plugin {plugin_name} not active")
-
-        if plugin.on_command(action, data):
-            return NebulaResponse(200)
-        else:
-            return NebulaResponse(500, "Playout plugin failed")
+        plugin = self.plugins[plugin_name]
+        assert plugin.on_command(action, data), "Plugin call failed"
 
     #
     # Props
@@ -282,6 +312,9 @@ class Service(BaseService):
 
     @property
     def playout_status(self):
+        assert self.channel
+        assert self.controller
+
         ctrl = self.controller
         stat = {
             "id_channel": self.channel.id,
@@ -332,7 +365,7 @@ class Service(BaseService):
 
         nebula.log.info(f"Advanced to {self.current_item}")
 
-        if self.last_run:
+        if self.last_run is not None:
             db.query(
                 """
                 UPDATE asrun SET stop = %s
@@ -352,13 +385,13 @@ class Service(BaseService):
             self.last_run = db.lastid()
             db.commit()
         else:
-            self.last_run = False
+            self.last_run = None
 
         for plugin in self.plugins:
             try:
                 plugin.on_change()
             except Exception:
-                nebula.log.traceback("Plugin on-change failed")
+                nebula.log.error("Plugin on-change: {e}")
 
     def on_live_enter(self):
         nebula.log.success("Entering a live event")
@@ -409,7 +442,7 @@ class Service(BaseService):
         try:
             next_event = nebula.Event(meta=db.fetchall()[0][1], db=db)
         except IndexError:
-            self.auto_event = False
+            self.auto_event = None
             return
 
         if self.auto_event == next_event.id:
@@ -420,7 +453,10 @@ class Service(BaseService):
         if not run_mode:
             return
 
-        elif not next_event.bin.items:
+        assert next_event.bin, "Next event has no bin loaded"
+        assert current_event.bin, "Current event has no bin loaded"
+
+        if not next_event.bin.items:
             return
 
         elif run_mode == RunMode.RUN_MANUAL:
@@ -465,6 +501,9 @@ class Service(BaseService):
     def channel_recover(self):
         nebula.log.warning("Performing recovery")
 
+        assert self.channel
+        assert self.controller
+
         db = DB()
         db.query(
             """
@@ -477,12 +516,12 @@ class Service(BaseService):
             last_id_item, last_start = db.fetchall()[0]
         except IndexError:
             nebula.log.error("Unable to perform recovery.")
-        last_item = nebula.Item(last_id_item, db=db)
-        last_item.asset
+            return
 
-        self.controller.current_item = last_item
-        self.controller.cued_item = False
-        self.controller.cued_fname = False
+        last_item = nebula.Item(last_id_item, db=db)
+        _ = last_item.asset
+
+        self.current_item = last_item
 
         if last_start + last_item.duration <= time.time():
             nebula.log.info(f"Last {last_item} has been broadcasted.")

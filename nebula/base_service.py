@@ -1,23 +1,21 @@
 import sys
 import time
-from typing import TYPE_CHECKING
+from xml.etree.ElementTree import Element
 
 from nebula.db import DB
 from nebula.enum import ServiceState
 from nebula.log import log
 
-if TYPE_CHECKING:
-    from xml.etree.ElementTree import Element
-
 
 class BaseService:
     id_service: int
-    settings: "Element"
+    settings: Element
 
-    def __init__(self, id_service, settings=None):
+    def __init__(self, id_service, settings: Element | None = None):
         log.debug(f"Initializing service ID {id_service}")
         self.id_service = id_service
-        self.settings = settings
+        if settings is not None:
+            self.settings = settings
 
         try:
             self.on_init()

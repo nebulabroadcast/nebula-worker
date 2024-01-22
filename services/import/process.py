@@ -4,30 +4,37 @@ import time
 from nxtools import FileObject
 
 import nebula
+from nebula.db import DB
 from nebula.enum import ObjectStatus
 from nebula.jobs import Job, send_to
+from nebula.objects import Asset
 
 from .common import ImportDefinition, create_error
 from .transcoder import ImportTranscoder
 
 
-def get_import_job(import_file, asset, action, service, db):
-    res = send_to(
-        id_asset=asset.id,
-        id_action=action.action_id,
-        id_service=service,
-        restart_existing=True,
-        db=db,
-    )
+def get_import_job(
+    import_file: FileObject,
+    asset: Asset,
+    action,
+    service,
+    db: DB | None = None,
+) -> Job | None:
+    if not db:
+        db = DB()
 
-    if not res:
-        create_error(import_file, f"Unable to create job for {asset}")
-        return
-
-    id_job = res.get("id")
-    if not id_job:
-        create_error(import_file, f"Unable to get job ID for {asset}")
-        return
+    try:
+        assert asset.id, f"Asset {asset} has no id"
+        id_job = send_to(
+            id_asset=asset.id,
+            id_action=action.action_id,
+            id_service=service,
+            restart_existing=True,
+            db=db,
+        )
+    except Exception as e:
+        create_error(import_file, f"Unable to create job for {asset}: {e}")
+        return None
 
     job = Job(id_job, db=db)
     job.set_progress(0, "Importing")
@@ -65,6 +72,8 @@ def import_asset(
     nebula.log.info(f"Importing {import_file} to {asset}")
 
     job = get_import_job(import_file, asset, action, service.id_service, db)
+    if job is None:
+        return False
     db.query(
         """
         UPDATE jobs SET
@@ -76,7 +85,9 @@ def import_asset(
     )
     db.commit()
 
-    def progress_handler(progress):
+    def progress_handler(progress: float) -> None:
+        if not job:
+            return
         job.set_progress(progress, f"Importing {progress:.02f}%")
 
     if not ensure_target(asset.file_path):

@@ -47,6 +47,8 @@ def update_host_info():
 
 
 class SystemMonitor(BaseAgent):
+    last_update: float = 0
+
     def on_init(self):
         self.last_update = 0
         db = nebula.DB()

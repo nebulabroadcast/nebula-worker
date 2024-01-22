@@ -5,9 +5,8 @@ check_version:
 	sed -i "s/version = \".*\"/version = \"$(VERSION)\"/" pyproject.toml
 
 check: check_version
-	poetry run isort .
-	poetry run black .
-	poetry run flake8 .
+	poetry run black . && \
+	poetry run ruff --fix . && \
 	poetry run mypy .
 
 
