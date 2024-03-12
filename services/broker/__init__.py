@@ -37,18 +37,16 @@ class Service(BaseService):
 
             if action.should_create(asset):
                 nebula.log.info(f"{asset} matches action condition {action.title}")
-                result = send_to(
-                    asset.id,
-                    action.id,
-                    restart_existing=False,
-                    restart_running=False,
-                    db=asset.db,
-                )
-
-                if result:
-                    nebula.log.info(result.message)
-                else:
-                    nebula.log.error(result.message)
+                try:
+                    _ = send_to(
+                        asset.id,
+                        action.id,
+                        restart_existing=False,
+                        restart_running=False,
+                        db=asset.db,
+                    )
+                except Exception as e:
+                    nebula.log.error(f"Failed to send {asset} to {action.title}: {e}")
 
                 asset[action.created_key] = 1
                 asset.save(set_mtime=False)

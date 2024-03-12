@@ -27,7 +27,7 @@ class OSCMessage(object):
 
     def __init__(self, dgram: bytes) -> None:
         self._dgram = dgram
-        self._parameters = []
+        self._parameters: list[Any] = []
         self._parse_datagram()
 
     def _parse_datagram(self) -> None:
@@ -42,9 +42,10 @@ class OSCMessage(object):
             if type_tag.startswith(","):
                 type_tag = type_tag[1:]
 
-            params = []
+            params: list[Any] = []
             param_stack = [params]
             # Parse each parameter given its type.
+            val: Any = None
             for param in type_tag:
                 if param == "i":  # Integer.
                     val, index = get_int(self._dgram, index)
@@ -69,7 +70,7 @@ class OSCMessage(object):
                 elif param == "F":  # False.
                     val = False
                 elif param == "[":  # Array start.
-                    array = []
+                    array: list[Any] = []
                     param_stack[-1].append(array)
                     param_stack.append(array)
                 elif param == "]":  # Array stop.
@@ -91,7 +92,7 @@ class OSCMessage(object):
                 )
             self._parameters = params
         except OSCParseError as pe:
-            raise OSCParseError("Found incorrect datagram, ignoring it", pe)
+            raise OSCParseError("Found incorrect datagram, ignoring it", pe) from pe
 
     @property
     def address(self) -> str:

@@ -14,9 +14,9 @@ class Storage:
         self.protocol = storage_config.protocol
         self.path = storage_config.path
         self.options = storage_config.options
-        self.read_only = None
-        self.last_mount_attempt = 0
-        self.mount_attempts = 0
+        self.read_only: bool | None = None
+        self.last_mount_attempt: float = 0
+        self.mount_attempts: int = 0
 
     def __str__(self):
         res = f"storage {self.id}"
@@ -88,7 +88,8 @@ class Storages:
         return Storage(storage_config)
 
     def __iter__(self):
-        return settings.storages.__iter__()
+        for storage_config in settings.storages:
+            yield Storage(storage_config)
 
 
 storages = Storages()

@@ -5,7 +5,7 @@ import nebula
 
 
 class BaseAgent:
-    def __init__(self, once=False):
+    def __init__(self, once=False) -> None:
         self.first_run = True
         self.thread = None
         self.is_running = False
@@ -21,16 +21,16 @@ class BaseAgent:
             self.thread = threading.Thread(target=self.run, daemon=True)
             self.thread.start()
 
-    def on_init(self):
+    def on_init(self) -> None:
         pass
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         pass
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         self.should_run = False
 
-    def run(self):
+    def run(self) -> None:
         self.is_running = True
         nebula.log.info(f"Starting {self.__class__.__name__}")
         while self.should_run:
@@ -43,5 +43,5 @@ class BaseAgent:
         self.on_shutdown()
         self.is_running = False
 
-    def main(self):
+    def main(self) -> None:
         pass

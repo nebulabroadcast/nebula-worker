@@ -1,6 +1,7 @@
 import os
 import subprocess
 import time
+from typing import Any
 
 import nebula
 from dispatch.agents import BaseAgent
@@ -78,7 +79,7 @@ class StorageMonitor(BaseAgent):
     def main(self):
         db = nebula.DB()
         db.query("SELECT id, settings FROM storages")
-        status = {}
+        status: dict[str, Any] = {}
 
         for id_storage, storage_settings in db.fetchall():
             storage = Storage(

@@ -53,8 +53,9 @@ def mediainfo(path: str) -> MediaInfo:
         result = subprocess.check_output(command)
         data = json.loads(result)
     except Exception as e:
-        raise Exception(f"Error while running {command}: {e}")
+        raise Exception(f"Error while running {command}: {e}") from e
 
+    video_track: VideoTrack | None = None
     audio_tracks = []
     duration = 0.0
     for track in data["media"]["track"]:
@@ -79,6 +80,8 @@ def mediainfo(path: str) -> MediaInfo:
                 sample_rate=track["SamplingRate"],
             )
             audio_tracks.append(audio_track)
+
+    assert video_track is not None, "No video track found"
 
     return MediaInfo(
         duration=duration,
@@ -143,7 +146,7 @@ class ImportTranscoder:
             mapping.append(self.audio_tracks[0].faucet)
 
         elif len(self.audio_tracks) > 1:
-            if all([track.channels == 1 for track in self.audio_tracks]):
+            if all(track.channels == 1 for track in self.audio_tracks):
                 # All audio tracks are mono
 
                 if self.profile.get("audio_layout") == "smca":

@@ -2,10 +2,14 @@ import os
 import signal
 import sys
 import time
+from typing import TYPE_CHECKING, Any, Type
 
 import nebula
 from dispatch.service_monitor import ServiceMonitor
 from dispatch.storage_monitor import StorageMonitor
+
+if TYPE_CHECKING:
+    from dispatch.agents import BaseAgent
 
 # from dispatch.system_monitor import SystemMonitor
 
@@ -17,34 +21,31 @@ nebula.log.user = "dispatch"
 
 
 class NebulaDispatch:
-    agent_list = {
+    agent_list: dict[str, Type["BaseAgent"]] = {
         "storage-monitor": StorageMonitor,
         "service-monitor": ServiceMonitor,
         #        "system-monitor": SystemMonitor,
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.should_run = True
-        self.agents = []
+        self.agents: list["BaseAgent"] = []
         signal.signal(signal.SIGINT, self.exit_gracefully)
         signal.signal(signal.SIGTERM, self.exit_gracefully)
 
-    def exit_gracefully(self, signum, frame):
+    def exit_gracefully(self, signum: Any, frame: Any) -> None:
+        _ = signum, frame
         self.should_run = False
 
-    def __call__(self):
-        for agent_name, Agent in self.agent_list.items():
-            # env_name = f"NEBULA_DISABLE_{agent_name.upper().replace('-', '_')}"
-            # if os.environ.get(env_name) or f"--disable-{agent_name}" in sys.argv:
-            #     os.environ[env_name] = "1"
-            #     nebula.log.info(f"Agent {agent_name} is disabled")
-            #     continue
+    def __call__(self) -> None:
+        for AgentClass in self.agent_list.values():
             try:
-                self.agents.append(Agent())
+                agent = AgentClass()
+                self.agents.append(agent)
             except Exception:
                 nebula.log.traceback()
                 self.shutdown()
-                nebula.log.critical(f"Unable to start {Agent.__name__}")
+                nebula.log.error(f"Unable to start {AgentClass.__name__}")
 
         while self.should_run:
             try:
@@ -63,15 +64,16 @@ class NebulaDispatch:
             nebula.log.warning("Immediate shutdown enforced. This may cause problems")
             sys.exit(1)
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         for agent in self.agents:
             agent.shutdown()
         while self.is_running:
             time.sleep(0.5)
+        return None
 
     @property
-    def is_running(self):
-        return any([agent.is_running for agent in self.agents])
+    def is_running(self) -> bool:
+        return any(agent.is_running for agent in self.agents)
 
 
 if __name__ == "__main__":

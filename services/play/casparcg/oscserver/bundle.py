@@ -29,7 +29,9 @@ class OSCBundle(object):
         try:
             self._timestamp, index = get_date(self._dgram, index)
         except OSCParseError as pe:
-            raise OSCParseError("Could not get the date from the datagram: %s" % pe)
+            raise OSCParseError(
+                "Could not get the date from the datagram: %s" % pe
+            ) from pe
         # Get the contents as a list of OscBundle and OscMessage.
         self._contents = self._parse_contents(index)
 
@@ -37,7 +39,7 @@ class OSCBundle(object):
     # but that would require import annotations from __future__, which is
     # python 3.7+ only.
     def _parse_contents(self, index: int) -> Any:
-        contents = []
+        contents: list[OSCMessage | OSCBundle] = []
 
         try:
             # An OSC Bundle Element consists of its size and its contents.
@@ -57,7 +59,7 @@ class OSCBundle(object):
                 elif OSCMessage.dgram_is_message(content_dgram):
                     contents.append(OSCMessage(content_dgram))
         except (OSCParseError, IndexError) as e:
-            raise OSCParseError("Could not parse a content datagram: %s" % e)
+            raise OSCParseError("Could not parse a content datagram: %s" % e) from e
 
         return contents
 
@@ -67,7 +69,7 @@ class OSCBundle(object):
         return dgram.startswith(_BUNDLE_PREFIX)
 
     @property
-    def timestamp(self) -> int:
+    def timestamp(self) -> float:
         """Returns the timestamp associated with this bundle."""
         return self._timestamp
 

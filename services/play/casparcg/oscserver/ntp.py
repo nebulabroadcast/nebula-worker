@@ -42,7 +42,7 @@ def ntp_to_system_time(timestamp: bytes) -> float:
     try:
         timestamp = struct.unpack(">Q", timestamp)[0]
     except Exception as e:
-        raise NtpError(e)
+        raise NtpError(e) from e
     return timestamp * _NTP_TIMESTAMP_TO_SECONDS - _NTP_DELTA
 
 
@@ -51,7 +51,7 @@ def system_time_to_ntp(seconds: float) -> bytes:
     try:
         seconds = seconds + _NTP_DELTA
     except TypeError as e:
-        raise NtpError(e)
+        raise NtpError(e) from e
     return struct.pack(">Q", int(seconds * _SECONDS_TO_NTP_TIMESTAMP))
 
 

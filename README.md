@@ -1,6 +1,11 @@
 Nebula worker
 =============
 
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/nebulabroadcast/nebula-worker?style=for-the-badge)
+![Maintenance](https://img.shields.io/maintenance/yes/2024?style=for-the-badge)
+![Last commit](https://img.shields.io/github/last-commit/nebulabroadcast/nebula-worker?style=for-the-badge)
+![Python version](https://img.shields.io/badge/python-3.11-blue?style=for-the-badge)
+
 This repository contains the code for [Nebula 6](https://github.com/nebulabroadcast/nebula) worker node.
 The worker node is responsible for processing media files, handling metadata, 
 automating transcoding, and controlling playout servers.

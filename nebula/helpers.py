@@ -1,6 +1,7 @@
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from typing import Any, Literal
 
 from nxtools import datestr2ts
 
@@ -20,52 +21,58 @@ except ModuleNotFoundError:
     has_mistune = False
 
 
-def asset_by_path(id_storage, path, db=False):
-    id_storage = str(id_storage)
+def asset_by_path(id_storage: int, path: str, db: DB | None = None) -> Asset | None:
+    id_storage = id_storage
     path = path.replace("\\", "/")
-    if not db:
+    if db is None:
         db = DB()
     db.query(
         """
-            SELECT id, meta FROM assets
+            SELECT meta FROM assets
                 WHERE media_type = %s
                 AND meta->>'id_storage' = %s
                 AND meta->>'path' = %s
         """,
-        [MediaType.FILE, id_storage, path],
+        [MediaType.FILE, str(id_storage), path],
     )
-    for id, meta in db.fetchall():
+    for (meta,) in db.fetchall():
         return Asset(meta=meta, db=db)
-    return False
+    return None
 
 
-def asset_by_full_path(path, db=False):
-    if not db:
+def asset_by_full_path(path: str, db: DB | None = None) -> Asset | None:
+    if db is None:
         db = DB()
     for storage in storages:
         if path.startswith(storage.local_path):
-            return asset_by_path(storage.id, path.replace(storage.local_path, 1), db=db)
-    return False
+            return asset_by_path(
+                storage.id,
+                path.replace(storage.local_path, "", 1),
+                db=db,
+            )
+    return None
 
 
-def meta_exists(key, value, db=False):
-    if not db:
+def meta_exists(key: str, value: Any, db: DB | None = None) -> Asset | None:
+    if db is None:
         db = DB()
-    db.query("SELECT id, meta FROM assets WHERE meta->>%s = %s", [str(key), str(value)])
-    for _, meta in db.fetchall():
+    db.query("SELECT meta FROM assets WHERE meta->>%s = %s", [str(key), str(value)])
+    for (meta,) in db.fetchall():
         return Asset(meta=meta, db=db)
-    return False
+    return None
 
 
-def get_day_events(id_channel, date, num_days=1):
+def get_day_events(id_channel: int, date: str, num_days: int = 1):
     chconfig = settings.get_playout_channel(id_channel)
+    if chconfig is None:
+        return
 
     start_time = datestr2ts(date, *chconfig.day_start)
     end_time = start_time + (3600 * 24 * num_days)
     db = DB()
     db.query(
         """
-        SELECT id, meta
+        SELECT meta
         FROM events
         WHERE id_channel=%s
         AND start > %s
@@ -73,28 +80,29 @@ def get_day_events(id_channel, date, num_days=1):
         """,
         (id_channel, start_time, end_time),
     )
-    for _, meta in db.fetchall():
+    for (meta,) in db.fetchall():
         yield Event(meta=meta)
 
 
-def get_bin_first_item(id_bin, db=False):
+def get_bin_first_item(id_bin: int, db: DB | None = None) -> Item | None:
     if not db:
         db = DB()
     db.query(
         """
-        SELECT id, meta FROM items
+        SELECT meta FROM items
         WHERE id_bin=%s
         ORDER BY position LIMIT 1
         """,
         [id_bin],
     )
-    for _, meta in db.fetchall():
+    for (meta,) in db.fetchall():
         return Item(meta=meta, db=db)
-    return False
+    return None
 
 
-def get_item_event(id_item, **kwargs):
-    db = kwargs.get("db", DB())
+def get_item_event(id_item: int, db: DB | None = None) -> Event | None:
+    if db is None:
+        db = DB()
     playout_channel_ids = ", ".join([str(f.id) for f in settings.playout_channels])
     db.query(
         f"""
@@ -107,11 +115,17 @@ def get_item_event(id_item, **kwargs):
     )
     for _, meta in db.fetchall():
         return Event(meta=meta, db=db)
-    return False
+    return None
 
 
-def get_item_runs(id_channel, from_ts, to_ts, db=False):
-    db = db or DB()
+def get_item_runs(
+    id_channel: int,
+    from_ts: float,
+    to_ts: float,
+    db: DB | None = None,
+) -> dict[int, tuple[float, float]]:
+    if db is None:
+        db = DB()
     db.query(
         """
         SELECT id_item, start, stop
@@ -129,43 +143,59 @@ def get_item_runs(id_channel, from_ts, to_ts, db=False):
     return result
 
 
-def get_next_item(item, **kwargs):
-    db = kwargs.get("db", DB())
-    force = kwargs.get("force", False)
-    if type(item) == int and item > 0:
+def get_next_item(
+    item: int | Item,
+    db: DB | None = None,
+    force: Literal["prev", "next"] | None = None,
+    force_next_event: bool = False,
+) -> Item | None:
+    if db is None:
+        db = DB()
+    if isinstance(item, int) and item > 0:
         current_item = Item(item, db=db)
     elif isinstance(item, Item):
         current_item = item
     else:
         log.error(f"Unexpected get_next_item argument {item}")
-        return False
+        return None
+
+    if not current_item.id:
+        return None
 
     log.debug(f"Looking for an item following {current_item}")
     current_bin = Bin(current_item["id_bin"], db=db)
 
-    items = current_bin.items
+    items_in_bin = current_bin.items
     if force == "prev":
-        items.reverse()
+        items_in_bin.reverse()
 
-    for item in items:
-        if (force == "prev" and item["position"] < current_item["position"]) or (
-            force != "prev" and item["position"] > current_item["position"]
-        ):
-            if item["item_role"] == "lead_out" and not force:
+    for item_in_bin in items_in_bin:
+        ipos = item_in_bin["position"]
+        cpos = current_item["position"]
+
+        # This should never happen, just keep mypy happy
+        assert isinstance(ipos, int), f"ipos {ipos} is not an int"
+        assert isinstance(cpos, int), f"cpos {cpos} is not an int"
+
+        if (force == "prev" and ipos < cpos) or (force != "prev" and ipos > cpos):
+            if item_in_bin["item_role"] == "lead_out" and not force:
                 log.info("Cueing Lead In")
-                for i, r in enumerate(current_bin.items):
+                for r in current_bin.items:
                     if r["item_role"] == "lead_in":
                         return r
                 else:
                     next_item = current_bin.items[0]
-                    next_item.asset
+                    _ = next_item.asset  # force asset preload
                     return next_item
-            if item["run_mode"] == RunMode.RUN_SKIP:
+            if item_in_bin["run_mode"] == RunMode.RUN_SKIP:
                 continue
-            item.asset
-            return item
+            _ = item_in_bin.asset  # force asset preload
+            return item_in_bin
     else:
-        current_event = get_item_event(item.id, db=db)
+        current_event = get_item_event(current_item.id, db=db)
+        if not current_event:
+            return None  # shouldn't happen, just keep mypy happy
+
         direction = ">"
         order = "ASC"
         if force == "prev":
@@ -181,31 +211,43 @@ def get_next_item(item, **kwargs):
         )
         try:
             next_event = Event(meta=db.fetchall()[0][0], db=db)
-            if not next_event.bin.items:
-                log.debug("Next playlist is empty")
-                raise Exception
-            if next_event["run_mode"] and not kwargs.get("force_next_event", False):
-                log.debug("Next playlist run mode is not auto")
-                raise Exception
+            log.debug(f"End of block. Next {next_event}")
+            _ = next_event.bin  # force bin preload
+            assert next_event.bin, f"{next_event} event has no bin"
+            assert next_event.bin.items, f"{next_event.bin} bin has no items"
+            assert not (
+                next_event["run_mode"] and not force_next_event
+            ), f"Next playlist run mode is not auto {next_event}"
+
             if force == "prev":
                 next_item = next_event.bin.items[-1]
             else:
                 next_item = next_event.bin.items[0]
-            next_item.asset
+            _ = next_item.asset  # force asset preload
             return next_item
+        except AssertionError as e:
+            log.info(f"Looping {current_event}: {e}")
+        except IndexError:
+            log.info(f"Looping {current_event}: no next event")
         except Exception:
-            log.info("Looping current playlist")
-            next_item = current_bin.items[0]
-            next_item.asset
-            return next_item
+            log.traceback(f"Error: looping {current_event} as fallback")
+        next_item = current_bin.items[0]
+        _ = next_item.asset  # force asset preload
+        return next_item
 
 
-def bin_refresh(bins, **kwargs):
+def bin_refresh(
+    bins: list[int],
+    db: DB | None = None,
+    initiator: str | None = None,
+):
     bins = [b for b in bins if b]
     if not bins:
-        return True
-    db = kwargs.get("db", DB())
-    sender = kwargs.get("sender", False)
+        return
+
+    if db is None:
+        db = DB()
+
     for id_bin in bins:
         b = Bin(id_bin, db=db)
         b.save(notify=False)
@@ -224,26 +266,21 @@ def bin_refresh(bins, **kwargs):
         event = Event(meta=meta, db=db)
         if event.id not in changed_events:
             changed_events.append(event.id)
-    log.debug(f"Bins changed {bins}.", f"Initiator {kwargs.get('initiator', log.user)}")
+    log.debug(f"Bins changed {bins}")
     messaging.send(
         "objects_changed",
-        sender=sender,
         objects=bins,
         object_type="bin",
-        initiator=kwargs.get("initiator", None),
+        initiator=initiator,
     )
     if changed_events:
-        log.debug(
-            f"Events changed {bins}." f"Initiator {kwargs.get('initiator', log.user)}"
-        )
+        log.debug(f"Events changed {bins}")
         messaging.send(
             "objects_changed",
-            sender=sender,
             objects=changed_events,
             object_type="event",
-            initiator=kwargs.get("initiator", None),
+            initiator=initiator,
         )
-    return True
 
 
 def html2email(html):
@@ -260,6 +297,7 @@ def html2email(html):
 
 def markdown2email(text):
     if has_mistune:
+        assert mistune, "Mistune not installed"
         msg = MIMEMultipart("alternative")
         html = mistune.html(text)
         part1 = MIMEText(text, "plain")
@@ -271,8 +309,18 @@ def markdown2email(text):
         return MIMEText(text, "plain")
 
 
-def send_mail(to, subject, body, **kwargs):
-    if type(to) == str:
+def send_mail(to: str | list[str], subject: str, body: str, **kwargs):
+    try:
+        assert settings.system.smtp_host, "SMTP host not configured"
+        assert settings.system.smtp_port, "SMTP port not configured"
+        assert settings.system.smtp_user, "SMTP user not configured"
+        assert settings.system.smtp_password, "SMTP password not configured"
+        assert settings.system.mail_from, "Mail from not configured"
+    except AssertionError as e:
+        log.error(f"Mail not sent: {e}")
+        return False
+
+    if isinstance(to, str):
         to = [to]
     reply_address = kwargs.get("from", settings.system.mail_from)
 
@@ -288,6 +336,6 @@ def send_mail(to, subject, body, **kwargs):
         s = smtplib.SMTP(settings.system.smtp_host, port=25)
     else:
         s = smtplib.SMTP_SSL(settings.system.smtp_host, port=settings.system.smtp_port)
-    if settings.system.smtp_user and settings.system.smtp_pass:
-        s.login(settings.system.smtp_user, settings.system.smtp_pass)
-    s.sendmail(reply_address, [to], msg.as_string())
+    if settings.system.smtp_user and settings.system.smtp_password:
+        s.login(settings.system.smtp_user, settings.system.smtp_password)
+    s.sendmail(reply_address, to, msg.as_string())
