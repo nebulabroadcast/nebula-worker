@@ -27,6 +27,7 @@ class Logger:
     user: str = "nebula"
     level = LogLevel.DEBUG
     messaging: Optional["Messaging"] = None
+    user_max_length: int = 16
 
     def __call__(
         self,
@@ -39,10 +40,11 @@ class Logger:
 
         lvl = level.name.upper()
         usr = kwargs.get("user") or self.user
+        usr = usr[: self.user_max_length].ljust(self.user_max_length)
         msg = " ".join([str(arg) for arg in args])
 
         print(
-            f"{lvl:<8} {usr:<12} {msg}",
+            f"{lvl:<8} {usr} {msg}",
             file=sys.stderr,
             flush=True,
         )
