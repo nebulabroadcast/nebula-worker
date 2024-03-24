@@ -92,7 +92,7 @@ class Asset(BaseObject):
 
     @property
     def fps(self) -> float:
-        n, d = [int(k) for k in self.meta.get("fps", "25/1").split("/")]
+        n, d = (int(k) for k in self.meta.get("fps", "25/1").split("/"))
         return n / d
 
     #

@@ -53,9 +53,7 @@ def handle_samba_storage(storage: Storage):
         smbopts["vers"] = smbver
 
     if smbopts:
-        opts = " -o '{}'".format(
-            ",".join(["{}={}".format(k, smbopts[k]) for k in smbopts])
-        )
+        opts = " -o '{}'".format(",".join([f"{k}={smbopts[k]}" for k in smbopts]))
     else:
         opts = ""
 

@@ -41,7 +41,7 @@ class Bin(BaseObject):
                 )
                 self._items = [
                     object_helper.Item(meta=meta, db=self.db)
-                    for meta, in self.db.fetchall()
+                    for (meta,) in self.db.fetchall()
                 ]
         return self._items
 

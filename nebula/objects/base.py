@@ -181,7 +181,7 @@ class BaseObject:
         return pprint.pformat(self.meta)
 
     def update(self, data: dict[str, Any]) -> None:
-        for key in data.keys():
+        for key in data:
             self[key] = data[key]
 
     #
@@ -225,7 +225,7 @@ class BaseObject:
             return
         log.info(f"Deleting {self}")
         self.delete_children()
-        self.db.query("DELETE FROM {} WHERE id=%s".format(self.table_name), [self.id])
+        self.db.query(f"DELETE FROM {self.table_name} WHERE id=%s", [self.id])
         self.db.query(
             "DELETE FROM ft WHERE object_type=%s AND id=%s",
             [self.object_type_id, self.id],

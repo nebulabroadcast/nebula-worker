@@ -348,15 +348,15 @@ class CasparController(BaseController):
 
     def set(self, key: str, value: Any) -> None:
         if key == "loop":
-            do_loop = int(str(value) in ["1", "True", "true"])
+            _loop = int(str(value) in ["1", "True", "true"])
             try:
-                q = f"CALL {self.caspar_channel}-{self.caspar_feed_layer} LOOP {do_loop}"
+                q = f"CALL {self.caspar_channel}-{self.caspar_feed_layer} LOOP {_loop}"
                 self.query(q)
             except CasparException as e:
                 raise CasparException(f"Unable to set loop: {e}") from e
 
-            if self.current_item and bool(self.current_item["loop"] != bool(do_loop)):
-                self.current_item["loop"] = bool(do_loop)
+            if self.current_item and bool(self.current_item["loop"] != bool(_loop)):
+                self.current_item["loop"] = bool(_loop)
                 self.current_item.save(notify=False)
                 bin_refresh([self.current_item["id_bin"]], db=self.current_item.db)
         else:

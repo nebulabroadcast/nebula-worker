@@ -35,7 +35,7 @@ def _timed_msg_of_bundle(bundle: OSCBundle, now: float) -> List[TimedMessage]:
     return msgs
 
 
-class OSCPacket(object):
+class OSCPacket:
     """Unit of transmission of the OSC protocol.
 
     Any application that sends OSC Packets is an OSC Client.

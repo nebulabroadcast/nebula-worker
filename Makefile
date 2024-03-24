@@ -2,8 +2,8 @@ VERSION=$(shell poetry run python -c 'import nebula' --version)
 
 check:
 	poetry version $(VERSION)
-	poetry run black .
-	poetry run ruff --fix .
+	poetry run ruff format .
+	poetry run ruff check --fix .
 	poetry run mypy .
 
 build: check

@@ -119,15 +119,15 @@ def mediaprobe(source_file: str) -> dict[str, Any]:
                 continue
 
             # Frame rate detection
-            fps_n, fps_d = [float(e) for e in stream["r_frame_rate"].split("/")]
+            fps_n, fps_d = (float(e) for e in stream["r_frame_rate"].split("/"))
             meta["video/fps_f"] = fps_n / fps_d
-            meta["video/fps"] = "{}/{}".format(int(fps_n), int(fps_d))
+            meta["video/fps"] = f"{int(fps_n)}/{int(fps_d)}"
 
             # Aspect ratio detection
             try:
-                dar_n, dar_d = [
+                dar_n, dar_d = (
                     float(e) for e in stream["display_aspect_ratio"].split(":")
-                ]
+                )
                 if not (dar_n and dar_d):
                     raise Exception
             except Exception:

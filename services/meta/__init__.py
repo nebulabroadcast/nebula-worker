@@ -83,7 +83,7 @@ class Service(BaseService):
 
         try:
             file_exists = asset_file.is_reg
-        except IOError:
+        except OSError:
             file_exists = False
 
         if not file_exists:
