@@ -220,7 +220,7 @@ def get_double(dgram: bytes, start_index: int) -> Tuple[float, int]:
             start_index + _DOUBLE_DGRAM_LEN,
         )
     except (struct.error, TypeError) as e:
-        raise OSCParseError("Could not parse datagram {}".format(e)) from e
+        raise OSCParseError(f"Could not parse datagram {e}") from e
 
 
 def get_blob(dgram: bytes, start_index: int) -> Tuple[bytes, int]:

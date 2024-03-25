@@ -20,7 +20,7 @@ def filter_match(filter_string: str, value: str) -> bool:
                 return True
         return False
     else:
-        return not not re.match(filter_string, value)
+        return bool(re.match(filter_string, value))
 
 
 @lru_cache(maxsize=512)
@@ -61,9 +61,9 @@ def get_cs_titles(urn: str, values: tuple[str], lang: LanguageCode = "en") -> li
             if (csval := schema.get(value)) is None:
                 result.append(str(value))
             else:
-                if (alias := csval.aliases.get(lang)) is not None:
-                    result.append(alias.title)
-                elif (alias := csval.aliases.get("en")) is not None:
+                if (alias := csval.aliases.get(lang)) is not None or (
+                    alias := csval.aliases.get("en")
+                ) is not None:
                     result.append(alias.title)
                 else:
                     result.append(value)

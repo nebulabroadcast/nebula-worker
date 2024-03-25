@@ -89,7 +89,7 @@ class Service(BaseService):
                     with import_file.open("rb") as f:
                         f.seek(0, 2)
                         fsize = f.tell()
-                except IOError:
+                except OSError:
                     nebula.log.debug(f"Import file {import_file.base_name} is busy.")
                     continue
 
@@ -178,10 +178,10 @@ class Service(BaseService):
         if not os.path.isdir(target_dir):
             try:
                 os.makedirs(target_dir)
-            except IOError:
+            except OSError:
                 pass
         try:
             os.rename(asset.file_path, os.path.join(target_dir, target_fname))
-        except IOError:
+        except OSError:
             nebula.log.traceback()
             nebula.log.warning(f"Unable to create version backup of {asset}")

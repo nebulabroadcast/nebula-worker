@@ -1,3 +1,18 @@
+__all__ = [
+    "Asset",
+    "Item",
+    "Bin",
+    "Event",
+    "User",
+    "DB",
+    "config",
+    "log",
+    "LogLevel",
+    "messaging",
+    "msg",
+    "settings",
+    "storages",
+]
 import sys
 
 from nebula.version import __version__
@@ -13,19 +28,6 @@ from nebula.messaging import messaging
 from nebula.objects import Asset, Bin, Event, Item, User
 from nebula.settings import load_settings, settings
 from nebula.storages import storages
-
-# Keep linters happy
-
-assert Asset
-assert Item
-assert Bin
-assert Event
-assert User
-
-assert DB
-assert config
-assert settings
-assert storages
 
 #
 # Setup stuff

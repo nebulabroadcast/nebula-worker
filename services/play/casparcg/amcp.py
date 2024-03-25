@@ -70,7 +70,7 @@ class CasparCG:
                 if not query.startswith("INFO"):
                     log.debug(f"Executing AMCP: {query}")
 
-            query_bytes = f"{query}{DELIM}".encode("utf-8")
+            query_bytes = f"{query}{DELIM}".encode()
 
             try:
                 self.connection.write(query_bytes)

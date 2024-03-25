@@ -166,5 +166,5 @@ class NebulaMelt(BaseEncoder):
             try:
                 nebula.log.debug(f"Moving {temp_path} to {target_path}")
                 os.rename(temp_path, target_path)
-            except IOError as e:
+            except OSError as e:
                 raise ConversionError("Unable to move output file") from e

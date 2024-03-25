@@ -9,7 +9,7 @@ from ..base_controller import BaseController
 
 class NebulaContiSource(ContiSource):
     def __init__(self, parent, path, **kwargs):
-        super(NebulaContiSource, self).__init__(parent, path, **kwargs)
+        super().__init__(parent, path, **kwargs)
         self.item = kwargs["item"]
 
 

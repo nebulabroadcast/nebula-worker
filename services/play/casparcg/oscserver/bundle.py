@@ -8,7 +8,7 @@ from .osc_types import OSCParseError, get_date, get_int
 _BUNDLE_PREFIX = b"#bundle\x00"
 
 
-class OSCBundle(object):
+class OSCBundle:
     """Bundles elements that should be triggered at the same time.
 
     An element can be another OscBundle or an OscMessage.

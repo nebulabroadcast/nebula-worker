@@ -10,10 +10,7 @@ from nebula.log import log
 from nebula.messaging import messaging
 from nebula.objects import Asset
 
-assert ObjectStatus
-assert ContentType
-assert MediaType
-assert JobState
+_ = ObjectStatus, ContentType, MediaType, JobState
 
 
 MAX_RETRIES = 3

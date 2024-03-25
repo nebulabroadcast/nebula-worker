@@ -107,7 +107,6 @@ class PlayoutStorageTool:
                 file_exists = stat.S_ISREG(fs[stat.ST_MODE])
             except FileNotFoundError:
                 file_exists = False
-                continue
 
             if file_exists:
                 file_size = fs[stat.ST_SIZE]

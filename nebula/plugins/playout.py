@@ -131,4 +131,4 @@ class PlayoutPlugin:
         pass
 
     def on_command(self, action: str, data: Any) -> bool:
-        pass
+        return True
