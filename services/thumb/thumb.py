@@ -115,10 +115,11 @@ class Service(BaseService):
             AND media_type = 1
             AND mtime > %s
             ORDER BY mtime ASC
-            """, [self.last_mtime]
+            """,
+            [self.last_mtime],
         )
         last_mtime = self.last_mtime
-        for meta, in db.fetchall():
+        for (meta,) in db.fetchall():
             asset = nebula.Asset(meta=meta)
 
             thumb_tool = ThumbnailTool(asset)
@@ -126,6 +127,3 @@ class Service(BaseService):
             last_mtime = max(last_mtime, asset["mtime"])
 
         self.last_mtime = last_mtime
-
-
-
