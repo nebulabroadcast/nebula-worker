@@ -1,4 +1,3 @@
-import functools
 import json
 import os
 from typing import TYPE_CHECKING
@@ -13,13 +12,33 @@ if TYPE_CHECKING:
     pass
 
 
+class ThumbnailError(Exception):
+    pass
+
+
 class ThumbnailTool:
     def __init__(self, asset: nebula.Asset):
         self.asset = asset
 
-    @functools.cached_property
-    def thumb_dir(self) -> str | None:
-        assert self.asset.id, "Asset ID not set. This should not happen."
+        if not self.asset.id:
+            raise ValueError("Asset ID not set")
+
+        # Get the thumb position
+
+        if self.asset["poster_frame"]:
+            self.thumb_position = self.asset["poster_frame"]
+
+        elif not self.asset.duration:
+            raise ThumbnailError("Asset duration not set")
+
+        else:
+            duration = self.asset.duration
+            pos = duration * 0.15
+            pos += self.asset["mark_in"] or 0
+            self.thumb_position = pos
+
+        # Get the thumb dir
+
         target_dir = os.path.join(
             storages[self.asset.proxy_storage].local_path,
             f".nx/thumbs/{int(self.asset.id / 1000)}/{self.asset.id}",
@@ -27,28 +46,11 @@ class ThumbnailTool:
         if not os.path.isdir(target_dir):
             try:
                 os.makedirs(target_dir, exist_ok=True)
-            except Exception:
-                pass
-        return target_dir
+            except Exception as e:
+                raise ThumbnailError(f"Could not create thumb dir {target_dir}") from e
 
-    @functools.cached_property
-    def thumb_position(self) -> float | None:
-        if self.asset["poster_frame"]:
-            return self.asset["poster_frame"]
-
-        if not self.asset.duration:
-            return None
-
-        duration = self.asset.duration
-        pos = duration * 0.15
-        pos += self.asset["mark_in"] or 0
-
-        return pos
-
-    @property
-    def manifest_path(self) -> str:
-        assert self.thumb_dir, "Thumb dir not set. This should not happen."
-        return os.path.join(self.thumb_dir, "manifest.json")
+        self.thumb_dir = target_dir
+        self.manifest_path = os.path.join(self.thumb_dir, "manifest.json")
 
     @property
     def thumb_exists(self):
@@ -59,27 +61,24 @@ class ThumbnailTool:
             manifest = json.load(f)
 
         if manifest.get("position") == self.thumb_position:
-            return True
+            # rebuild thumbnails when source file has been updated
+            if manifest.get("fmtime") == self.asset["file/mtime"]:
+                return True
 
         return False
 
     def build(self):
-        if not self.thumb_dir:
-            return
-
-        if not self.thumb_position:
-            return
-
         if self.thumb_exists:
             return
 
         sizes = ["1920", "540", "160"]
+        outputs = []
 
         nebula.log.info(f"Building thumbs for {self.asset}")
 
         for size in sizes:
             thumb_path = os.path.join(self.thumb_dir, f"thumb-{size}.jpg")
-            ffmpeg(
+            if ffmpeg(
                 "-y",
                 "-ss",
                 self.thumb_position,
@@ -92,9 +91,14 @@ class ThumbnailTool:
                 "-q:v",
                 "2",
                 thumb_path,
-            )
+            ):
+                outputs.append(size)
 
-        manifest = {"position": self.thumb_position, "sizes": sizes}
+        manifest = {
+            "position": self.thumb_position,
+            "sizes": outputs,
+            "fmtime": self.asset["file/mtime"],
+        }
 
         with open(self.manifest_path, "w") as f:
             json.dump(manifest, f)
@@ -122,7 +126,11 @@ class Service(BaseService):
         for (meta,) in db.fetchall():
             asset = nebula.Asset(meta=meta)
 
-            thumb_tool = ThumbnailTool(asset)
+            try:
+                thumb_tool = ThumbnailTool(asset)
+            except ThumbnailError:
+                continue
+
             thumb_tool.build()
             last_mtime = max(last_mtime, asset["mtime"])
 
