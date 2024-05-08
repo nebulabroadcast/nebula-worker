@@ -47,7 +47,11 @@ class PlayoutPlugins:
                 continue
 
             nebula.log.info(f"Initializing plugin {plugin_name}")
-            self.plugins.append(py_mod.Plugin(self.service))
+            try:
+                self.plugins.append(py_mod.Plugin(self.service))
+            except Exception:
+                nebula.log.traceback(f"Unable to initialize plugin {plugin_name}")
+                continue
             self.plugins[-1].title = self.plugins[-1].title or plugin_name.capitalize()
         nebula.log.info("All plugins initialized")
 
