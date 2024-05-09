@@ -171,12 +171,14 @@ class Service(BaseService):
                     asset = result
                 elif asset["status"] != ObjectStatus.CREATING:
                     asset["status"] = ObjectStatus.CREATING
-                    return
-                else:
+                    asset.save()
                     return
 
                 if asset["status"] == ObjectStatus.RESET:
-                    asset["status"] = ObjectStatus.ONLINE
+                    if result:
+                        asset["status"] = ObjectStatus.ONLINE
+                    else:
+                        asset["status"] = ObjectStatus.CORRUPTED
                     nebula.log.info(f"{asset}: Metadata reset completed")
                 else:
                     asset["status"] = ObjectStatus.CREATING
@@ -190,6 +192,14 @@ class Service(BaseService):
             asset.save(set_mtime=False, notify=False)
 
         elif asset["status"] in (ObjectStatus.CREATING, ObjectStatus.OFFLINE):
+            result = ffprobe_asset(asset)
+            if not result:
+                nebula.log.warning(f"{asset}: Asset is corrupted")
+                asset["status"] = ObjectStatus.CORRUPTED
+                asset["qc/state"] = 0
+                asset.save()
+                return
+
             nebula.log.success(f"{asset}: Turning online")
 
             # Do not restart actions if file just reappeared
