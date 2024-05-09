@@ -112,13 +112,19 @@ def import_asset(
 
     # Transcode
 
-    transcoder = ImportTranscoder(
-        import_file.path,
-        temp_file,
-        action.profile,
-    )
+    result = False
+    try:
+        transcoder = ImportTranscoder(
+            import_file.path,
+            temp_file,
+            action.profile,
+        )
 
-    result = transcoder.start(progress_handler)
+        result = transcoder.start(progress_handler)
+    except Exception as e:
+        # Result is still false, so job will fail
+        # We just log the problem
+        nebula.log.error(f"{e}")
 
     # Move temp file to asset file
 
