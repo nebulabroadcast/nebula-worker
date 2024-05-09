@@ -61,7 +61,10 @@ def mediainfo(path: str) -> MediaInfo:
     for track in data["media"]["track"]:
         index = track.get("StreamOrder", 0)
         if track["@type"] == "General":
-            duration = float(track["Duration"])
+            try:
+                duration = float(track["Duration"])
+            except (KeyError, ValueError):
+                raise Exception(f"Invalid source duration of {path}") from None
         elif track["@type"] == "Video":
             video_track = VideoTrack(
                 commercial_name=track.get("Format_Commercial_IfAny"),
