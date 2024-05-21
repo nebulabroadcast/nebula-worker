@@ -15,7 +15,7 @@ psutil = "^5.9.4"
 psycopg2-binary = "^2.9.3"
 pydantic = "^1.10.12"
 redis = "^4.5.4"
-requests = "^2.31.0"
+requests = "^2.32.0"
 python-dotenv = "^0.21.0"
 Jinja2 = "^3.1.4"
 
