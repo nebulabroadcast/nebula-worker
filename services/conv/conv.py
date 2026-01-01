@@ -58,6 +58,9 @@ class Service(BaseService):
         db.commit()
 
     def progress_handler(self, progress: float | None = None):
+        if not self.job:
+            return
+
         stat = self.job.get_status()
         if stat == JobState.RESTART:
             self.encoder.stop()
@@ -134,13 +137,13 @@ class Service(BaseService):
                 self.encoder.finalize()
             except Exception as e:
                 self.job.fail(f"Failed to finalize task {id_task+1}: {e}")
-                nebula.log.traceback()
                 return
 
             job_params = self.encoder.params
 
         job = self.job  # noqa
         assert job
+        assert action
 
         for success_script in action.settings.findall("success"):
             nebula.log.info("Executing success script")
