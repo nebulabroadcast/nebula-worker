@@ -22,14 +22,17 @@ class CasparController(BaseController):
         self.parent = parent
         self.init_controller()
 
-
     def init_controller(self) -> None:
-        self.caspar_host: str = self.parent.channel.config.get("caspar_host", "localhost")
+        self.caspar_host: str = self.parent.channel.config.get(
+            "caspar_host", "localhost"
+        )
         self.caspar_port: int = int(self.parent.channel.config.get("caspar_port", 5250))
         self.caspar_osc_port: int = int(
             self.parent.channel.config.get("caspar_osc_port", 5253)
         )
-        self.caspar_channel: int = int(self.parent.channel.config.get("caspar_channel", 1))
+        self.caspar_channel: int = int(
+            self.parent.channel.config.get("caspar_channel", 1)
+        )
         self.caspar_feed_layer: int = int(
             self.parent.channel.config.get("caspar_feed_layer", 10)
         )

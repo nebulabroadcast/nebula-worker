@@ -1,4 +1,3 @@
-import socket
 import telnetlib
 import threading
 
@@ -47,7 +46,7 @@ class CasparCG:
             m = f"Unable to connect {self}. Connection refused"
             log.error(m)
             raise CasparConnectionException(m) from e
-        except socket.timeout as e:
+        except TimeoutError as e:
             m = f"Unable to connect {self}. Connection timeout"
             log.error(m)
             raise CasparConnectionException(m) from e

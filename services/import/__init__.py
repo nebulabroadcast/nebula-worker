@@ -168,7 +168,7 @@ class Service(BaseService):
             nebula.storages[asset["id_storage"]].local_path,
             ".nx",
             "versions",
-            f"{int(asset.id/1000):04d}",
+            f"{int(asset.id / 1000):04d}",
             f"{asset.id:d}",
         )
 

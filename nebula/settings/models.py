@@ -54,7 +54,7 @@ class BaseSystemSettings(SettingsModel):
 
     site_name: str = Field(
         "nebula",
-        regex=r"^[a-zA-Z0-9_]+$",
+        pattern=r"^[a-zA-Z0-9_]+$",
         title="Site name",
         description="A name used as the site (instance) identification",
     )

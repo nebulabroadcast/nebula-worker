@@ -1,7 +1,7 @@
 import re
 from collections import defaultdict
 from functools import lru_cache
-from typing import Any, DefaultDict
+from typing import Any
 
 from nxtools import unaccent
 
@@ -96,7 +96,7 @@ def make_cs_tree(
     elif order in ["title", "alias"]:
         items.sort(key=lambda x: unaccent(x["title"]))  # type: ignore
 
-    parents: DefaultDict[str, list[Any]] = defaultdict(list[Any])
+    parents: defaultdict[str, list[Any]] = defaultdict(list[Any])
 
     for item in items:
         path = item["value"].split(".")  # type: ignore

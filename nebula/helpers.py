@@ -215,9 +215,9 @@ def get_next_item(
             _ = next_event.bin  # force bin preload
             assert next_event.bin, f"{next_event} event has no bin"
             assert next_event.bin.items, f"{next_event.bin} bin has no items"
-            assert not (
-                next_event["run_mode"] and not force_next_event
-            ), f"Next playlist run mode is not auto {next_event}"
+            assert not (next_event["run_mode"] and not force_next_event), (
+                f"Next playlist run mode is not auto {next_event}"
+            )
 
             if force == "prev":
                 next_item = next_event.bin.items[-1]

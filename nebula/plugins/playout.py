@@ -1,6 +1,7 @@
 import os
 import threading
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -43,7 +44,7 @@ class PlayoutPlugin:
     busy: bool = False
 
     def __init__(self, service: "PlayService"):
-        self.service: "PlayService" = service
+        self.service: PlayService = service
         self.busy: bool = True
         if self.channel.playout_storage and self.channel.playout_dir:
             self.playout_dir = os.path.join(

@@ -2,9 +2,9 @@ Nebula worker
 =============
 
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/nebulabroadcast/nebula-worker?style=for-the-badge)
-![Maintenance](https://img.shields.io/maintenance/yes/2025?style=for-the-badge)
+![Maintenance](https://img.shields.io/maintenance/yes/2026?style=for-the-badge)
 ![Last commit](https://img.shields.io/github/last-commit/nebulabroadcast/nebula-worker?style=for-the-badge)
-![Python version](https://img.shields.io/badge/python-3.11-blue?style=for-the-badge)
+![Python version](https://img.shields.io/badge/python-3.12-blue?style=for-the-badge)
 
 This repository contains the code for [Nebula 6](https://github.com/nebulabroadcast/nebula) worker node.
 The worker node is responsible for processing media files, handling metadata, 
@@ -59,8 +59,7 @@ Nebula is developed and tested on Debian Buster. Other distributions may work.
 
 Software requirements:
 
- - Python 3.10+
- - Poetry
+ - Python 3.12 (3.13 won't work)
  - FFMpeg
  - cifs-utils (for mounting SMB shares)
  - mediainfo (used by import service)
@@ -82,9 +81,9 @@ See the `nebula/config.py` file for a list of available options and their defaul
 
 The most important directives are:
 
- - NEBULA_SITE_NAME 
- - NEBULA_POSTGRES - PostgreSQL connection string (e.g. `postgresql://user:password@host:port/database`)
- - NEBULA_REDIS - Redis connection string (e.g. `redis://user:password@host:port/database`)
- - NEBULA_PLUGIN_DIR - Path to the directory containing plugins
+ - `NEBULA_SITE_NAME` 
+ - `NEBULA_POSTGRES` - PostgreSQL connection string (e.g. `postgresql://user:password@host:port/database`)
+ - `NEBULA_REDIS` - Redis connection string (e.g. `redis://user:password@host:port/database`)
+ - `NEBULA_PLUGIN_DIR` - Path to the directory containing plugins
 
 When installing on bare metal, you may use `.env` file to set the enviroment variables.

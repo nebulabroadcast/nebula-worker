@@ -2,7 +2,7 @@ import os
 import signal
 import sys
 import time
-from typing import TYPE_CHECKING, Any, Type
+from typing import TYPE_CHECKING, Any
 
 import nebula
 from dispatch.service_monitor import ServiceMonitor
@@ -21,7 +21,7 @@ nebula.log.user = "dispatch"
 
 
 class NebulaDispatch:
-    agent_list: dict[str, Type["BaseAgent"]] = {
+    agent_list: dict[str, type["BaseAgent"]] = {
         "storage-monitor": StorageMonitor,
         "service-monitor": ServiceMonitor,
         #        "system-monitor": SystemMonitor,
@@ -29,7 +29,7 @@ class NebulaDispatch:
 
     def __init__(self) -> None:
         self.should_run = True
-        self.agents: list["BaseAgent"] = []
+        self.agents: list[BaseAgent] = []
         signal.signal(signal.SIGINT, self.exit_gracefully)
         signal.signal(signal.SIGTERM, self.exit_gracefully)
 

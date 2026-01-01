@@ -1,6 +1,7 @@
 import socketserver
+from collections.abc import Callable
 from socket import socket
-from typing import Any, Callable, Tuple
+from typing import Any
 
 from .bundle import _BUNDLE_PREFIX
 from .osc_types import OSCParseError
@@ -29,7 +30,7 @@ class OSCServer(socketserver.UDPServer):
     def verify_request(
         self,
         request: socket | tuple[bytes, socket],
-        client_address: Tuple[str, int] | str,
+        client_address: tuple[str, int] | str,
     ) -> bool:
         _ = client_address
         if isinstance(request, socket):

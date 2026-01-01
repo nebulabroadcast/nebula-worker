@@ -1,15 +1,16 @@
-VERSION=$(shell poetry run python -c 'import nebula' --version)
+VERSION=$(shell sed -n 's/__version__ = \"\(.*\)\"/\1/p' nebula/version.py)
 
 check:
-	poetry version $(VERSION)
-	poetry run ruff format .
-	poetry run ruff check --fix .
-	poetry run mypy .
+	sed -i "s/^version = \".*\"/version = \"$(VERSION)\"/" pyproject.toml
+	uv run ruff check . --select=I --fix
+	uv run ruff format .
+	uv run ruff check . --fix --unsafe-fixes
+	uv run mypy .
 
-build: check
+build:
 	docker build -t nebulabroadcast/nebula-worker:dev .
 
-dist: build
+dist: check build
 	docker push nebulabroadcast/nebula-worker:dev
 
 setup-hooks:

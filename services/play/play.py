@@ -49,7 +49,11 @@ class Service(BaseService):
     def on_init(self):
         channel_tag = self.settings.find("id_channel")
 
-        if channel_tag is None or not channel_tag.text or not channel_tag.text.isdigit():
+        if (
+            channel_tag is None
+            or not channel_tag.text
+            or not channel_tag.text.isdigit()
+        ):
             nebula.log.error("Service misconfigured: No channel specified")
             self.shutdown(no_restart=True)
 

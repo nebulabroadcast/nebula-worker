@@ -21,8 +21,6 @@ class BaseController:
     loop: bool = False
     cueing: bool = False
 
-
-
     def __init__(self, parent: "PlayService"):
         self.parent = parent
 

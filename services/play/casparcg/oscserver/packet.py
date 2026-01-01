@@ -5,7 +5,6 @@ It lets you access easily to OscMessage and OscBundle instances in the packet.
 
 import collections
 import time
-from typing import List
 
 from .bundle import OSCBundle
 from .message import OSCMessage
@@ -21,7 +20,7 @@ TimedMessage = collections.namedtuple(
 )
 
 
-def _timed_msg_of_bundle(bundle: OSCBundle, now: float) -> List[TimedMessage]:
+def _timed_msg_of_bundle(bundle: OSCBundle, now: float) -> list[TimedMessage]:
     """Returns messages contained in nested bundles as a list of TimedMessage."""
     msgs = []
     for content in bundle:
@@ -67,6 +66,6 @@ class OSCPacket:
             raise OSCParseError(f"Could not parse packet {pe}") from pe
 
     @property
-    def messages(self) -> List[TimedMessage]:
+    def messages(self) -> list[TimedMessage]:
         """Returns asc-time-sorted TimedMessages of the messages in this packet."""
         return self._messages

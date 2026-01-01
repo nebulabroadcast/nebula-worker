@@ -1,9 +1,8 @@
-import imp
 import os
 from typing import TYPE_CHECKING
 
 import nebula
-from nebula.plugins import get_plugin_path
+from nebula.plugins import get_plugin_path, import_module
 from nebula.plugins.playout import PlayoutPlugin
 
 if TYPE_CHECKING:
@@ -33,7 +32,7 @@ class PlayoutPlugins:
                 continue
 
             try:
-                py_mod = imp.load_source(plugin_name, plugin_path)
+                py_mod = import_module(plugin_name, plugin_path)
             except Exception:
                 nebula.log.traceback(f"Unable to load plugin {plugin_name}")
                 continue

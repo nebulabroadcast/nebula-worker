@@ -26,9 +26,9 @@ class VlcMedia:
         # NB: Times are input as float seconds,
         # but all other VLC functions use milliseconds.
         if self.mark_in:
-            self.media.add_option(":start-time=%f" % self.mark_in)
+            self.media.add_option(f":start-time={self.mark_in:f}")
         if self.mark_out:
-            self.media.add_option(":stop-time=%f" % self.mark_out)
+            self.media.add_option(f":stop-time={self.mark_out:f}")
 
         self.media.event_manager().event_attach(
             vlc.EventType.MediaParsedChanged, self.parse_callback

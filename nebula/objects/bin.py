@@ -57,7 +57,7 @@ class Bin(BaseObject):
     @property
     def event(self) -> Optional["Event"]:
         if not hasattr(self, "_event"):
-            self._event: Optional["Event"]
+            self._event: Event | None
             self.db.query(
                 """
                 SELECT meta FROM events

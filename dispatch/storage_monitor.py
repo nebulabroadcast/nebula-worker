@@ -12,8 +12,7 @@ from nebula.storages import Storage
 def exec_mount(cmd: str) -> bool:
     proc = subprocess.run(
         cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         shell=True,
     )
     if proc.returncode != 0:
@@ -23,6 +22,7 @@ def exec_mount(cmd: str) -> bool:
         )
         return False
     return True
+
 
 # def handle_nfs_storage(storage: Storage):
 #     cmd = f"mount.nfs {storage.path} {storage.local_path}"
