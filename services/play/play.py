@@ -1,13 +1,14 @@
 import threading
 import time
 from http.server import HTTPServer
-from typing import Any
+from typing import Any, cast
 
 import nebula
 from nebula.base_service import BaseService
 from nebula.db import DB
 from nebula.enum import ObjectStatus, RunMode
 from nebula.helpers import get_item_event, get_next_item
+from services.play.base_controller import BaseController
 from services.play.plugins import PlayoutPlugins
 from services.play.request_handler import PlayoutRequestHandler
 
@@ -16,7 +17,7 @@ DEFAULT_STATUS = {
 }
 
 
-def create_controller(parent):
+def create_controller(parent) -> BaseController:
     engine = parent.channel.engine
     if engine == "vlc":
         from .vlc.vlc_controller import VlcController
@@ -31,6 +32,8 @@ def create_controller(parent):
 
         return CasparController(parent)
 
+    raise Exception(f"Unsupported playout engine: {engine}")
+
 
 class PlayoutHTTPServer(HTTPServer):
     service: "Service"
@@ -41,21 +44,26 @@ class Service(BaseService):
     current_item: nebula.Item | None = None
     current_asset: nebula.Asset | None = None
     current_event: nebula.Event | None = None
+    controller: BaseController | None = None
 
     def on_init(self):
         channel_tag = self.settings.find("id_channel")
-        assert channel_tag.text, "No channel specified"  # type: ignore
-        id_channel = int(channel_tag.text)  # type: ignore
 
+        if channel_tag is None or not channel_tag.text or not channel_tag.text.isdigit():
+            nebula.log.error("Service misconfigured: No channel specified")
+            self.shutdown(no_restart=True)
+
+        id_channel = int(channel_tag.text)
         channel = nebula.settings.get_playout_channel(id_channel)
 
         if channel is None:
-            nebula.log.error("No playout channel configured")
+            nebula.log.error("Service misconfigured: Invalid channel specified")
             self.shutdown(no_restart=True)
-            return
 
         self.channel = channel
-        assert self.channel.controller_port, "No controller port configured"
+        if not self.channel.controller_port:
+            nebula.log.error("Service misconfigured: Invalid controller port")
+            self.shutdown(no_restart=True)
 
         self.fps = float(self.channel.fps)
 
@@ -68,11 +76,6 @@ class Service(BaseService):
         self.status_key = f"playout_status/{self.channel.id}"
 
         self.plugins = PlayoutPlugins(self)
-        self.controller = create_controller(self)
-        if not self.controller:
-            nebula.log.error("Invalid controller specified")
-            self.shutdown(no_restart=True)
-            return
 
         port = int(self.channel.controller_port)
         nebula.log.info(f"Using port {port} for the HTTP interface.")
@@ -99,11 +102,17 @@ class Service(BaseService):
         self.server_thread.start()
         self.plugins.load()
         self.on_progress()
+
+        try:
+            self.controller = create_controller(self)
+        except Exception as e:
+            nebula.log.error(f"Unable to create controller: {e}. Playout unavailable")
+            nebula.log.debug("Please fix the configuration and restart the service.")
+            return
+
         # self.channel_recover()
 
     def on_shutdown(self):
-        if not hasattr(self, "controller"):
-            return
         if self.controller and hasattr(self.controller, "shutdown"):
             self.controller.shutdown()
 
@@ -112,6 +121,9 @@ class Service(BaseService):
     #
 
     def cue(self, **kwargs) -> None:
+        if not self.controller:
+            raise Exception("Unable to cue. Controller not found")
+
         db = kwargs.get("db", DB())
         assert self.channel, f"Unable to cue. Channel {self.channel.id} not found"
         assert self.controller, "Unable to cue. Controller not found"
@@ -210,8 +222,8 @@ class Service(BaseService):
         nebula.log.trace("Cueing the next item")
         assert self.controller, "Unable to cue. Controller not found"
 
-        # TODO: deprecate. controller should handle this
-        self.controller.cueing = True
+        # deprecated. controller should handle this
+        # self.controller.cueing = True
 
         if item is None:
             item = self.controller.current_item
@@ -352,6 +364,9 @@ class Service(BaseService):
             plugin.main()
 
     def on_change(self):
+        if not self.controller:
+            return
+
         db = DB()
 
         self.current_item = self.controller.current_item
@@ -409,7 +424,7 @@ class Service(BaseService):
         It does not handle AUTO playlist advancing
         """
 
-        if not hasattr(self, "controller"):
+        if not self.controller:
             return
 
         if hasattr(self.controller, "on_main"):
@@ -421,7 +436,7 @@ class Service(BaseService):
 
         db = DB()
 
-        current_event = get_item_event(current_item.id, db=db)
+        current_event = get_item_event(cast(int, current_item.id), db=db)
 
         if not current_event:
             nebula.log.warning("Unable to fetch the current event")
@@ -499,10 +514,13 @@ class Service(BaseService):
             return
 
     def channel_recover(self):
-        nebula.log.warning("Performing recovery")
+        if not self.controller:
+            return
 
-        assert self.channel
-        assert self.controller
+        if not self.channel:
+            return
+
+        nebula.log.warning("Performing recovery")
 
         db = DB()
         db.query(

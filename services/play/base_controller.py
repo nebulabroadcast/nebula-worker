@@ -10,6 +10,18 @@ class BaseController:
     parent: "PlayService"
     time_unit: str = "s"
     current_item: nebula.Item | None = None
+    cued_item: nebula.Item | None = None
+
+    current_fname: str | None = None
+    cued_fname: str | None = None
+    request_time: float | None = None
+    paused: bool = False
+    position: float = 0.0
+    duration: float | None = None
+    loop: bool = False
+    cueing: bool = False
+
+
 
     def __init__(self, parent: "PlayService"):
         self.parent = parent
@@ -53,3 +65,6 @@ class BaseController:
     def set(self, key: str, value: Any) -> None:
         _ = key, value
         nebula.log.warning("set() not implemented for {self.__class__.__name__}")
+
+    def on_main(self) -> None:
+        pass

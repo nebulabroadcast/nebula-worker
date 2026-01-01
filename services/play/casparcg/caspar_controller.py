@@ -20,15 +20,18 @@ class CasparController(BaseController):
 
     def __init__(self, parent: "PlayService"):
         self.parent = parent
+        self.init_controller()
 
-        self.caspar_host: str = parent.channel.config.get("caspar_host", "localhost")
-        self.caspar_port: int = int(parent.channel.config.get("caspar_port", 5250))
+
+    def init_controller(self) -> None:
+        self.caspar_host: str = self.parent.channel.config.get("caspar_host", "localhost")
+        self.caspar_port: int = int(self.parent.channel.config.get("caspar_port", 5250))
         self.caspar_osc_port: int = int(
-            parent.channel.config.get("caspar_osc_port", 5253)
+            self.parent.channel.config.get("caspar_osc_port", 5253)
         )
-        self.caspar_channel: int = int(parent.channel.config.get("caspar_channel", 1))
+        self.caspar_channel: int = int(self.parent.channel.config.get("caspar_channel", 1))
         self.caspar_feed_layer: int = int(
-            parent.channel.config.get("caspar_feed_layer", 10)
+            self.parent.channel.config.get("caspar_feed_layer", 10)
         )
 
         self.should_run = True
@@ -48,12 +51,7 @@ class CasparController(BaseController):
         self.pos: float = 0
         self.dur: float = 0
 
-        try:
-            self.connect()
-        except Exception:
-            nebula.log.error("Unable to connect CasparCG Server. Shutting down.")
-            self.parent.shutdown()
-            return
+        self.connect()
 
         self.caspar_data = CasparOSCServer(self.caspar_osc_port)
         self.lock = threading.Lock()
