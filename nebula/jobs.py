@@ -381,10 +381,10 @@ class Job:
         )
 
 
-def get_job(id_service: int, action_ids: list[int], db: DB | None = None):
+def get_job(id_service: int, action_ids: list[int], db: DB | None = None) -> Job | None:
     assert isinstance(action_ids, list), "action_ids must be list of integers"
     if not action_ids:
-        return False
+        return None
     if db is None:
         db = DB()
     now = time.time()
@@ -534,7 +534,7 @@ def get_job(id_service: int, action_ids: list[int], db: DB | None = None):
                 message="Waiting",
             )
             db.commit()
-    return False
+    return None
 
 
 def send_to(
