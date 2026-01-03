@@ -1,7 +1,6 @@
 import os
 import subprocess
 import time
-from typing import Any
 
 import nebula
 from dispatch.agents import BaseAgent
@@ -9,19 +8,17 @@ from nebula.settings.models import StorageSettings
 from nebula.storages import Storage
 
 
-def exec_mount(cmd: str) -> bool:
+def exec_mount(cmd: str) -> None:
     proc = subprocess.run(
         cmd,
         capture_output=True,
         shell=True,
     )
     if proc.returncode != 0:
-        nebula.log.error(
+        raise RuntimeError(
             f"Mount failed with return code {proc.returncode}"
             f": {proc.stderr.decode().strip()}"
         )
-        return False
-    return True
 
 
 # def handle_nfs_storage(storage: Storage):
@@ -44,7 +41,8 @@ def handle_samba_storage(storage: Storage):
             storage.mount_attempts = 999
             return
 
-    nebula.log.info(f"Mounting {storage} (attempt {storage.mount_attempts + 1})...")
+    if storage.mount_attempts < 5:
+        nebula.log.info(f"Mounting {storage} (attempt {storage.mount_attempts + 1})...")
 
     smbopts = []
     for key, value in storage.options.items():
@@ -66,17 +64,19 @@ def handle_samba_storage(storage: Storage):
         opts = ""
 
     cmd = f"mount.cifs {storage.path} {storage.local_path}{opts}"
-    nebula.log.trace(cmd)
+    if storage.mount_attempts < 5:
+        nebula.log.trace(cmd)
 
-    if exec_mount(cmd):
-        nebula.log.success(f"{storage} mounted successfully")
-        storage.mount_attempts = 0
-    else:
+    try:
+        exec_mount(cmd)
+    except RuntimeError as e:
         if storage.mount_attempts < 5:
-            nebula.log.trace(cmd)
-            nebula.log.error(f"Unable to mount {storage}")
+            nebula.log.error(str(e))
         storage.last_mount_attempt = time.time()
         storage.mount_attempts += 1
+    else:
+        nebula.log.success(f"{storage} mounted successfully")
+        storage.mount_attempts = 0
 
 
 class StorageMonitor(BaseAgent):
@@ -85,17 +85,18 @@ class StorageMonitor(BaseAgent):
 
     def main(self):
         db = nebula.DB()
-        db.query("SELECT id, settings FROM storages WHERE enabled")
-        status: dict[str, Any] = {}
+        db.query("SELECT id, settings FROM storages")
 
         for id_storage, storage_settings in db.fetchall():
             storage = Storage(
                 StorageSettings(
                     id=id_storage,
                     **storage_settings,
-                    **status.get(id_storage, {}),
                 )
             )
+
+            if not storage.enabled:
+                continue
 
             stats = self.status.get(id_storage, {})
             storage.last_mount_attempt = stats.get("last_mount_attempt", 0)

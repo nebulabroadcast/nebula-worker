@@ -1,5 +1,7 @@
 import os
 import posixpath
+import socket
+from typing import Any
 
 from nebula.config import config
 from nebula.log import log
@@ -8,15 +10,33 @@ from nebula.settings.models import StorageSettings
 
 
 class Storage:
-    def __init__(self, storage_config):
-        self.id = storage_config.id
-        self.name = storage_config.name
-        self.protocol = storage_config.protocol
-        self.path = storage_config.path
-        self.options = storage_config.options
+    id: int
+    name: str
+    protocol: str
+    path: str
+    options: dict[str, Any]
+    read_only: bool | None
+    last_mount_attempt: float
+    mount_attempts: int
+    enabled: bool
+
+    def __init__(self, storage_settings: StorageSettings) -> None:
+        self.id = storage_settings.id
+        self.name = storage_settings.name
+        self.protocol = storage_settings.protocol
+        self.path = storage_settings.path
+        self.options = storage_settings.options
         self.read_only: bool | None = None
         self.last_mount_attempt: float = 0
         self.mount_attempts: int = 0
+        self.enabled = True
+
+        for override in storage_settings.overrides:
+            if override.hostname == socket.gethostname():
+                self.enabled = override.enabled
+                self.path = override.path or self.path
+                self.options = override.options or self.options
+                self.protocol = override.protocol or self.protocol
 
     def __str__(self):
         res = f"storage {self.id}"
@@ -26,7 +46,7 @@ class Storage:
 
     @property
     def title(self):
-        return self.name.name
+        return self.name
 
     @property
     def local_path(self) -> str:
@@ -82,6 +102,8 @@ class Storages:
                     name="Unknown",
                     protocol="local",
                     path=f"/mnt/{config.site_name}_{id_storage:02d}",
+                    options={},
+                    overrides=[],
                 )
             )
 

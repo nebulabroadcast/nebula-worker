@@ -42,10 +42,10 @@ class Service(BaseService):
 
     def on_main(self):
         self.mounted_storages = []
-        for id_storage in storages:
-            storage_path = storages[id_storage].local_path
-            if os.path.exists(storage_path) and len(os.listdir(storage_path)) != 0:
-                self.mounted_storages.append(id_storage)
+        for storage in storages:
+            storage_path = storage.local_path
+            if os.path.isdir(storage_path) and len(os.listdir(storage_path)) != 0:
+                self.mounted_storages.append(storage.id)
 
         db = DB()
         # do not scan trashed and archived files

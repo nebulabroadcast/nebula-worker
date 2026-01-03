@@ -1,4 +1,4 @@
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
@@ -106,6 +106,11 @@ class SystemSettings(BaseSystemSettings):
     )
 
 
+class BaseListItemModel(SettingsModel):
+    id: int = Field(..., title="ID", examples=[1])
+    name: str = Field(..., title="Name", examples=["Name"])
+
+
 #
 # Action settings
 #
@@ -149,19 +154,92 @@ class ServiceSettings(BaseServiceSettings):
 #
 
 
-class BaseStorageSettings(SettingsModel):
-    id: int = Field(..., title="Storage ID", example=1)
-    name: str = Field(..., title="Storage name", name="Production")
-    protocol: Literal["samba", "local"] = Field(
-        ...,
-        title="Connection protocol",
-        example="samba",
-    )
-    path: str = Field(..., title="Path", example="//server/share")
+class BaseStorageSettings(BaseListItemModel):
+    protocol: Annotated[
+        Literal["samba", "local"],
+        Field(
+            title="Connection protocol",
+            examples=["samba", "local"],
+        ),
+    ]
+
+    path: Annotated[
+        str,
+        Field(
+            title="Path",
+            examples=["//server/share"],
+        ),
+    ]
 
 
-class StorageSettings(BaseStorageSettings):
-    options: dict[str, Any] = Field(default_factory=dict)
+class ExtendedStorageSettings(BaseStorageSettings):
+    options: Annotated[
+        dict[str, Any],
+        Field(
+            default_factory=dict,
+            title="Connection options",
+        ),
+    ]
+
+
+class StorageOverrideSettings(SettingsModel):
+    hostname: Annotated[
+        str,
+        Field(
+            title="Hostname",
+            description=(
+                "Hostname of the host for which the override applies"
+                " (use __server__ for the server hosts)"
+            ),
+            examples=[
+                "worker01",
+                "__server__",
+            ],
+        ),
+    ]
+
+    enabled: Annotated[
+        bool,
+        Field(
+            title="Enabled",
+            description="Set to false to disale the storage access on the host",
+        ),
+    ] = True
+
+    protocol: Annotated[
+        Literal["samba", "local"] | None,
+        Field(
+            title="Connection protocol",
+            examples=["samba", "local"],
+        ),
+    ] = None
+
+    path: Annotated[
+        str | None,
+        Field(
+            title="Path",
+            examples=["//server/share"],
+        ),
+    ] = None
+
+    options: Annotated[
+        dict[str, Any],
+        Field(
+            default_factory=dict,
+            title="Connection options",
+        ),
+    ]
+
+
+class StorageSettings(ExtendedStorageSettings):
+    overrides: Annotated[
+        list[StorageOverrideSettings],
+        Field(
+            default_factory=list,
+            title="Overrides",
+            description="List of storage overrides for specific hosts",
+        ),
+    ]
 
 
 #
@@ -270,13 +348,6 @@ class PlayoutChannelSettings(BasePlayoutChannelSettings):
 #
 
 
-def find_id(data: list[SettingsModel], id: int) -> SettingsModel | None:
-    for item in data:
-        if item.id == id:
-            return item
-    return None
-
-
 class ServerSettings(SettingsModel):
     installed: bool = True
     system: SystemSettings = Field(default_factory=SystemSettings)
@@ -291,13 +362,25 @@ class ServerSettings(SettingsModel):
     playout_channels: list[PlayoutChannelSettings] = Field(default_factory=list)
 
     def get_folder(self, id_folder: int) -> FolderSettings | None:
-        return find_id(self.folders, id_folder)
+        for item in self.folders:
+            if item.id == id_folder:
+                return item
+        return None
 
     def get_view(self, id_view: int) -> ViewSettings | None:
-        return find_id(self.views, id_view)
+        for item in self.views:
+            if item.id == id_view:
+                return item
+        return None
 
     def get_storage(self, id_storage: int) -> StorageSettings | None:
-        return find_id(self.storages, id_storage)
+        for item in self.storages:
+            if item.id == id_storage:
+                return item
+        return None
 
     def get_playout_channel(self, id_channel: int) -> PlayoutChannelSettings | None:
-        return find_id(self.playout_channels, id_channel)
+        for item in self.playout_channels:
+            if item.id == id_channel:
+                return item
+        return None
