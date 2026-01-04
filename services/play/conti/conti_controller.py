@@ -29,7 +29,7 @@ class ContiController(BaseController):
 
     def __init__(self, parent):
         self.parent = parent
-        self.cueing = None
+        self.cueing = False
         self.cued = None
         self.request_time = time.time()
         self.position = self.duration = 0
@@ -107,19 +107,20 @@ class ContiController(BaseController):
             return self.take()
         nebula.log.info(f"Cued item {self.cued_item} ({full_path})")
 
-    def take(self, **kwargs):
-        _ = kwargs
+    def take(self, layer: int | None = None) -> None:
+        _ = layer
         self.conti.take()
 
-    def freeze(self, **kwargs):
-        _ = kwargs
+    def freeze(self, layer: int | None = None) -> None:
+        _ = layer
         self.conti.freeze()
 
-    def retake(self, **kwargs):
-        _ = kwargs
+    def retake(self, layer: int | None = None) -> None:
+        _ = layer
+        pass
 
-    def abort(self, **kwargs):
-        _ = kwargs
+    def abort(self, layer: int | None = None) -> None:
+        _ = layer
         self.conti.abort()
 
     def shutdown(self):

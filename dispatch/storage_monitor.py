@@ -41,8 +41,7 @@ def handle_samba_storage(storage: Storage):
             storage.mount_attempts = 999
             return
 
-    if storage.mount_attempts < 5:
-        nebula.log.info(f"Mounting {storage} (attempt {storage.mount_attempts + 1})...")
+    nebula.log.debug(f"Mounting {storage} (attempt {storage.mount_attempts + 1})...")
 
     smbopts = []
     for key, value in storage.options.items():
