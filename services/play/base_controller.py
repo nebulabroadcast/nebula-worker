@@ -1,3 +1,4 @@
+import time
 from typing import TYPE_CHECKING, Any
 
 import nebula
@@ -14,7 +15,6 @@ class BaseController:
 
     current_fname: str | None = None
     cued_fname: str | None = None
-    request_time: float | None = None
     paused: bool = False
     position: float = 0.0
     duration: float | None = None
@@ -66,3 +66,7 @@ class BaseController:
 
     def on_main(self) -> None:
         pass
+
+    @property
+    def request_time(self) -> float:
+        return time.time()

@@ -339,8 +339,8 @@ class PlayoutChannelSettings(BasePlayoutChannelSettings):
     playout_dir: str | None = None
     playout_container: str | None = None
     allow_remote: bool = Field(False)
-    controller_host: str | None = None
-    controller_port: int | None = None
+    controller_host: str
+    controller_port: int
 
 
 #

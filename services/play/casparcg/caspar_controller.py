@@ -42,7 +42,7 @@ class CasparController(BaseController):
         self.current_fname: str | None = None
         self.cued_item: nebula.Item | None = None
         self.cued_fname: str | None = None
-        self.cueing: str | bool = False
+        self.cueing: bool = False
         self.cueing_time: float = 0
         self.cueing_item: nebula.Item | None = None
         self.stalled = False
@@ -73,10 +73,6 @@ class CasparController(BaseController):
     @property
     def id_channel(self) -> int:
         return self.parent.channel.id
-
-    @property
-    def request_time(self) -> float:
-        return time.time()
 
     @property
     def fps(self) -> float:
@@ -256,7 +252,7 @@ class CasparController(BaseController):
 
         query = " ".join(query_list)
 
-        self.cueing = fname
+        self.cueing = True
         self.cueing_item = item
         self.cueing_time = time.time()
 

@@ -56,6 +56,7 @@ class Service(BaseService):
         ):
             nebula.log.error("Service misconfigured: No channel specified")
             self.shutdown(no_restart=True)
+            return
 
         id_channel = int(channel_tag.text)
         channel = nebula.settings.get_playout_channel(id_channel)
@@ -63,6 +64,7 @@ class Service(BaseService):
         if channel is None:
             nebula.log.error("Service misconfigured: Invalid channel specified")
             self.shutdown(no_restart=True)
+            return
 
         self.channel = channel
         if not self.channel.controller_port:
@@ -149,12 +151,12 @@ class Service(BaseService):
             nebula.log.info("Next is item is live")
             assert fname is not None, "Live source is not configured"
             try:
-                response = self.controller.cue(fname, item, **kwargs)
+                self.controller.cue(fname, item, **kwargs)
             except Exception as e:
                 nebula.log.error(f"Unable to cue live source: {e}")
                 raise e
             self.cued_live = True
-            return response
+            return
 
         assert item["id_asset"], f"Unable to cue virtual {item}"
 
