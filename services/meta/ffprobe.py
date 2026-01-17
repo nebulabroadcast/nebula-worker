@@ -46,7 +46,7 @@ def ffprobe_asset(asset: Asset):
 
         # Only update auto-generated title
         if key == "title":
-            if value == get_base_name(asset.file_path):
+            if value != get_base_name(asset.file_path):
                 continue
 
         # Do not update descriptive metadata
