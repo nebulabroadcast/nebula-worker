@@ -2,7 +2,7 @@ Nebula worker
 =============
 
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/nebulabroadcast/nebula-worker?style=for-the-badge)
-![Maintenance](https://img.shields.io/maintenance/yes/2025?style=for-the-badge)
+![Maintenance](https://img.shields.io/maintenance/yes/2026?style=for-the-badge)
 ![Last commit](https://img.shields.io/github/last-commit/nebulabroadcast/nebula-worker?style=for-the-badge)
 ![Python version](https://img.shields.io/badge/python-3.11-blue?style=for-the-badge)
 
