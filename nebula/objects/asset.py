@@ -141,7 +141,7 @@ class Asset(BaseObject):
             return None
         return playout_config.playout_storage
 
-    def get_playout_path(self, id_channel) -> str | None:
+    def get_playout_path(self, id_channel: int) -> str | None:
         playout_config = settings.get_playout_channel(id_channel)
         if playout_config is None:
             return None
@@ -151,7 +151,7 @@ class Asset(BaseObject):
         container = playout_config.playout_container
         return os.path.join(playout_config.playout_dir, f"{playout_name}.{container}")
 
-    def get_playout_full_path(self, id_channel) -> str | None:
+    def get_playout_full_path(self, id_channel: int) -> str | None:
         id_storage = self.get_playout_storage(id_channel)
         playout_path = self.get_playout_path(id_channel)
         if not (id_storage and playout_path):
