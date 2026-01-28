@@ -52,3 +52,34 @@ ignore = [
     "B008",    # do not perform function calls in argument defaults
     "C901",    # too complex. C'mon - this is a complex project
 ]
+
+
+[tool.mypy]
+plugins = [
+  "pydantic.mypy"
+]
+
+check_untyped_defs = true
+disallow_any_generics = true
+exclude = "tests/|venv/|tool/|test_"
+explicit_package_bases = true
+no_implicit_reexport = true
+strict_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+# follow_imports = "silent"
+# strict = true
+# disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = [
+  "nxtools",
+  "nxtools.media",
+  "promexp",
+  "psycopg2",
+  "vlc",
+  "mistune",
+  "conti",
+]
+ignore_missing_imports = true
+follow_imports = "skip"

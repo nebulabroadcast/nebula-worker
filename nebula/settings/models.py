@@ -102,7 +102,7 @@ class SystemSettings(BaseSystemSettings):
         None,
         title="Mail from",
         description="Email address used as the sender",
-        example="Nebula <noreply@example.com>",
+        examples=["Nebula <noreply@example.com>"],
     )
 
 
@@ -132,16 +132,16 @@ class ActionSettings(BaseActionSettings):
 
 
 class BaseServiceSettings(SettingsModel):
-    id: int = Field(..., title="Service ID", example=1)
-    name: str = Field(..., title="Service name", example="conv01")
-    type: str = Field(..., title="Service type", example="conv")
-    host: str = Field(..., title="Host", example="node01")
-    autostart: bool = Field(True, title="Autostart", example=True)
+    id: int = Field(..., title="Service ID", examples=[1])
+    name: str = Field(..., title="Service name", examples=["conv01"])
+    type: str = Field(..., title="Service type", examples=["conv"])
+    host: str = Field(..., title="Host", examples=["node01"])
+    autostart: bool = Field(True, title="Autostart", examples=[True])
     loop_delay: int = Field(
         5, title="Loop delay", description="Seconds of sleep between runs"
     )
     state: ServiceState = Field(ServiceState.STOPPED)
-    last_seen: int = Field(0, title="Last seen", example=1949155890)
+    last_seen: int = Field(0, title="Last seen", examples=[1949155890])
 
 
 class ServiceSettings(BaseServiceSettings):
@@ -314,7 +314,7 @@ class BasePlayoutChannelSettings(SettingsModel):
     day_start: DayStart = Field((7, 0))
     rundown_columns: list[str] = Field(default_factory=list)
     fields: list[FolderField] = Field(
-        fields="Fields",
+        title="Fields",
         description="Metadata fields available for the channel events",
         default_factory=lambda: [
             FolderField(name="title"),
