@@ -19,6 +19,9 @@ class CasparClip:
         self.loop = False
         self.producer = "empty"
 
+    def __repr__(self):
+        return f"CasparClip(name={self.name}, position={self.position})"
+
     def handle_osc(self, address, *args):
         if address == ["paused"]:
             self.paused = args[0]

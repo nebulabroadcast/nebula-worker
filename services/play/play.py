@@ -146,6 +146,8 @@ class Service(BaseService):
 
         assert item, f"Unable to cue. Item {item} not found"
 
+        nebula.log.info(f"Cueing {item}")
+
         if item["item_role"] == "live":
             fname = self.channel.config.get("live_source")
             nebula.log.info("Next is item is live")
@@ -334,6 +336,8 @@ class Service(BaseService):
         assert self.controller
 
         ctrl = self.controller
+        print(ctrl.cued_item, ctrl.current_item)
+    
         stat = {
             "id_channel": self.channel.id,
             "fps": float(self.fps),
