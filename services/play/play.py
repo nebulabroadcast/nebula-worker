@@ -336,7 +336,6 @@ class Service(BaseService):
         assert self.controller
 
         ctrl = self.controller
-        print(ctrl.cued_item, ctrl.current_item)
     
         stat = {
             "id_channel": self.channel.id,
