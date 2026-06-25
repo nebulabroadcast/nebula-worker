@@ -1,9 +1,10 @@
-import telnetlib
+import socket
 import threading
 
 from nebula.log import log
 
 DELIM = "\r\n"
+DELIM_BYTES = DELIM.encode("utf-8")
 
 
 class CasparException(Exception):
@@ -30,7 +31,8 @@ class CasparCG:
         self.host = host
         self.port = port
         self.timeout = timeout
-        self.connection: telnetlib.Telnet | None = None
+        self.connection: socket.socket | None = None
+        self._buffer = b""
         self.lock = threading.Lock()
 
     def __str__(self) -> str:
@@ -38,21 +40,44 @@ class CasparCG:
 
     def connect(self, **kwargs) -> None:
         """Create a connection to CasparCG Server"""
+        _ = kwargs
         try:
-            self.connection = telnetlib.Telnet(
-                self.host, self.port, timeout=self.timeout
+            self.close()
+            self.connection = socket.create_connection(
+                (self.host, self.port), timeout=self.timeout
             )
+            self.connection.settimeout(self.timeout)
         except ConnectionRefusedError as e:
             m = f"Unable to connect {self}. Connection refused"
             log.error(m)
             raise CasparConnectionException(m) from e
-        except TimeoutError as e:
+        except (socket.timeout, TimeoutError) as e:
             m = f"Unable to connect {self}. Connection timeout"
             log.error(m)
             raise CasparConnectionException(m) from e
         except Exception as e:
             log.traceback()
             raise CasparConnectionException("Unable to connect CasparCG") from e
+
+    def close(self) -> None:
+        if self.connection is not None:
+            try:
+                self.connection.close()
+            finally:
+                self.connection = None
+                self._buffer = b""
+
+    def _read_until_delim(self) -> bytes:
+        assert self.connection is not None
+
+        while DELIM_BYTES not in self._buffer:
+            chunk = self.connection.recv(4096)
+            if not chunk:
+                raise ConnectionResetError("CasparCG connection closed by peer")
+            self._buffer += chunk
+
+        result, self._buffer = self._buffer.split(DELIM_BYTES, 1)
+        return result
 
     def query(self, query: str, **kwargs) -> str | None:
         """Send an AMCP command"""
@@ -72,16 +97,22 @@ class CasparCG:
             query_bytes = f"{query}{DELIM}".encode()
 
             try:
-                self.connection.write(query_bytes)
-                result_bytes = self.connection.read_until(DELIM.encode("utf-8"))
+                self.connection.sendall(query_bytes)
+                result_bytes = self._read_until_delim()
             except ConnectionResetError as e:
-                self.connection = None
+                self.close()
                 raise CasparConnectionException(
                     "CasparCG connection reset by peer"
                 ) from e
             except BrokenPipeError as e:
-                self.connection = None
+                self.close()
                 raise CasparConnectionException("CasparCG connection broken") from e
+            except (socket.timeout, TimeoutError) as e:
+                self.close()
+                raise CasparConnectionException("CasparCG query timed out") from e
+            except OSError as e:
+                self.close()
+                raise CasparConnectionException("CasparCG query failed") from e
             except Exception as e:
                 log.traceback()
                 raise CasparConnectionException("CasparCG query failed") from e
@@ -97,7 +128,7 @@ class CasparCG:
 
                 elif result[:3] in ["201", "200"]:
                     # stat = int(result[0:3])
-                    result_bytes = self.connection.read_until(DELIM.encode("utf-8"))
+                    result_bytes = self._read_until_delim()
                     result = result_bytes.decode("utf-8").strip()
                     return result
 
@@ -107,7 +138,7 @@ class CasparCG:
                     if result.startswith("400"):
                         # 400 error is followed by one more line with
                         # the original query
-                        _ = self.connection.read_until(DELIM.encode("utf-8"))
+                        _ = self._read_until_delim()
 
                     raise CasparException(f"{result} error in CasparCG query '{query}'")
             except CasparException as e:
