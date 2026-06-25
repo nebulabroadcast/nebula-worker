@@ -1,4 +1,4 @@
-name: Publish a new version
+name: Build a dev image
 
 on:
   push:

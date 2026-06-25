@@ -13,15 +13,7 @@ __all__ = [
 
 import string
 
-from .common import *
-
-try:
-    import unidecode
-
-    has_unidecode = True
-except ModuleNotFoundError:
-    has_unidecode = False
-
+import unidecode
 
 #: E-mail address regular expression
 EMAIL_REGEXP = r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)"
@@ -35,10 +27,10 @@ default_slug_whitelist = string.ascii_letters + string.digits
 slug_separator_whitelist = " ,./\\;:!|*^#@~+-_="
 
 
-def indent(src, l: int = 4):
+def indent(src, length: int = 4):
     """Indent a multi-line text"""
     return (
-        "\n".join([f"{l * ' '}{s.rstrip()}" for s in src.split("\n")]) + "\n"
+        "\n".join([f"{length * ' '}{s.rstrip()}" for s in src.split("\n")]) + "\n"
         if src.endswith("\n")
         else ""
     )
@@ -51,9 +43,7 @@ def to_unicode(string: str) -> str:
 
 def unaccent(string: str) -> str:
     """Remove accents and/or transliterate non-ascii characters"""
-    if has_unidecode:
-        return unidecode.unidecode(string)
-    return string
+    return unidecode.unidecode(string)
 
 
 def slugify(
@@ -67,7 +57,8 @@ def slugify(
 ) -> str:
     """Slugify a text string
 
-    This function removes transliterates input string to ASCII, removes special characters
+    This function removes transliterates input string to ASCII,
+    removes special characters
     and use join resulting elemets using specified separator.
 
     Args:
@@ -123,7 +114,7 @@ def fract2float(fract) -> float:
         if len(nd) == 1 or nd[1] == "1":
             return float(nd[0])
         return float(nd[0]) / float(nd[1])
-    except:
+    except Exception:
         return 1
 
 

@@ -1,7 +1,7 @@
 VERSION=$(shell sed -n 's/__version__ = \"\(.*\)\"/\1/p' nebula/version.py)
 
 check:
-	sed -i "s/^version = \".*\"/version = \"$(VERSION)\"/" pyproject.toml
+	uv version $(VERSION)
 	uv run ruff check . --select=I --fix
 	uv run ruff format .
 	uv run ruff check . --fix --unsafe-fixes

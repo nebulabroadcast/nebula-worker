@@ -15,11 +15,14 @@ import uuid
 from xml.etree import ElementTree
 
 
-# DEPRECATED
 def decode_if_py3(x, enc="utf-8"):
     return x.decode(enc)
+
+
 def encode_if_py3(x, enc="utf-8"):
-    return bytes(x, enc) if type(x) == str else x
+    return bytes(x, enc) if isinstance(x, str) else x
+
+
 string_type = str
 string_types = [str]
 
@@ -56,14 +59,6 @@ def find_binary(file_name: str) -> str:
     Returns:
         str: The path to the executable
     """
-    if PLATFORM == "unix":
-        if os.path.exists(file_name) and file_name == os.path.basename(file_name):
-            return "./" + file_name
-        return file_name
-    elif PLATFORM == "windows":
-        if not file_name.endswith(".exe"):
-            file_name = file_name + ".exe"
-        for path in sys.path:
-            fpath = os.path.join(path, file_name)
-            if os.path.exists(fpath):
-                return fpath
+    if os.path.exists(file_name) and file_name == os.path.basename(file_name):
+        return "./" + file_name
+    return file_name

@@ -10,13 +10,7 @@ from .common import PLATFORM
 from .text import indent
 from .timeutils import format_time
 
-try:
-    from colorama import Fore, Style, init
-
-    init()
-    has_colorama = True
-except ModuleNotFoundError:
-    has_colorama = False
+has_colorama = False
 
 
 DEBUG, INFO, WARNING, ERROR, GOOD_NEWS = range(5)
@@ -66,9 +60,9 @@ class Logging:
         self.formats_ansi = {
             INFO: "\033[1;30m{timestamp}\033[0m{type} {user} {message}",
             DEBUG: "\033[1;30m{timestamp}\033[0m\033[34m{type} {user} {message}\033[0m",
-            WARNING: "\033[1;30m{timestamp}\033[0m\033[33m{type}\033[0m {user} {message}",
+            WARNING: "\033[1;30m{timestamp}\033[0m\033[33m{type}\033[0m {user} {message}",  # noqa: E501
             ERROR: "\033[1;30m{timestamp}\033[0m\033[31m{type}\033[0m {user} {message}",
-            GOOD_NEWS: "\033[1;30m{timestamp}\033[0m\033[32m{type}\033[0m {user} {message}",
+            GOOD_NEWS: "\033[1;30m{timestamp}\033[0m\033[32m{type}\033[0m {user} {message}",  # noqa: E501
         }
 
         self.formats_nocolor = {
@@ -79,55 +73,7 @@ class Logging:
             GOOD_NEWS: "{timestamp}{type} {user} {message}",
         }
 
-        if has_colorama:
-            self.formats_colorama = {
-                DEBUG: Style.BRIGHT
-                + Fore.BLACK
-                + "{timestamp}"
-                + Style.RESET_ALL
-                + Fore.BLUE
-                + "{type}"
-                + "{user} {message}"
-                + Style.RESET_ALL,
-                INFO: Style.BRIGHT
-                + Fore.BLACK
-                + "{timestamp}"
-                + Style.NORMAL
-                + Fore.WHITE
-                + "{type}"
-                + Fore.RESET
-                + "{user} {message}"
-                + Style.RESET_ALL,
-                WARNING: Style.BRIGHT
-                + Fore.BLACK
-                + "{timestamp}"
-                + Style.NORMAL
-                + Fore.YELLOW
-                + "{type}"
-                + Fore.RESET
-                + "{user} {message}"
-                + Style.RESET_ALL,
-                ERROR: Style.BRIGHT
-                + Fore.BLACK
-                + "{timestamp}"
-                + Style.NORMAL
-                + Fore.RED
-                + "{type}"
-                + Fore.RESET
-                + "{user} {message}"
-                + Style.RESET_ALL,
-                GOOD_NEWS: Style.BRIGHT
-                + Fore.BLACK
-                + "{timestamp}"
-                + Style.NORMAL
-                + Fore.GREEN
-                + "{type}"
-                + Fore.RESET
-                + "{user} {message}"
-                + Style.RESET_ALL,
-            }
-        else:
-            self.formats_colorama = self.formats_nocolor
+        self.formats_colorama = self.formats_nocolor
 
     def add_handler(self, handler):
         if handler not in self.handlers:

@@ -12,6 +12,7 @@ __all__ = [
 import os
 import stat
 import tempfile
+from collections.abc import Iterable
 
 from .common import get_guid
 from .logging import log_traceback
@@ -155,12 +156,13 @@ def join_path(*args):
 
 def get_files(
     base_path: str,
+    *,
     recursive: bool = False,
     hidden: bool = False,
-    exts: list = None,
+    exts: Iterable[str] | None = None,
     case_sensitive_exts: bool = False,
     relative_path: bool = False,
-    strip_path: str = None,
+    strip_path: str | None = None,
 ):
     """Crawl a given directory
 
@@ -226,7 +228,7 @@ def get_files(
                 else:
                     yield file_object
             elif file_object.is_dir and recursive:
-                for file_object in get_files(
+                yield from get_files(
                     file_object.path,
                     recursive=recursive,
                     hidden=hidden,
@@ -234,18 +236,18 @@ def get_files(
                     exts=exts,
                     relative_path=relative_path,
                     strip_path=strip_path,
-                ):
-                    yield file_object
+                )
 
 
 def get_path_pairs(
     input_dir,
     output_dir,
-    target_ext: str = None,
+    *,
+    target_ext: str | None = None,
     target_slugify: bool = False,
     recursive: bool = True,
     hidden: bool = False,
-    exts: list = None,
+    exts: Iterable[str] | None = None,
     case_sensitive_exts: bool = False,
 ):
     """For each file found in `input_dir` and yield a tuple of (input_path, output_path)
@@ -253,7 +255,8 @@ def get_path_pairs(
     This function is useful for batch conversion, when you need to process files
     from `input_dir` and output the result to `output_dir`.
 
-    Most arguments are the same as for `get_files`. You can also specify a target extension,
+    Most arguments are the same as for `get_files`.
+    You can also specify a target extension,
     and use a slugifier for the output path.
 
     Args:
@@ -291,7 +294,7 @@ def get_path_pairs(
         yield input_file, output_file
 
 
-def get_temp(extension: str = False, root: str = False) -> str:
+def get_temp(extension: str | None = None, root: str | None = None) -> str:
     """Return a path to a temporary file
 
     Args:
@@ -326,7 +329,7 @@ def file_to_title(file_name: str) -> str:
     base = base.replace("_", " ").replace("-", " - ").strip()
     elms = []
     capd = False
-    for _i, elm in enumerate(base.split(" ")):
+    for elm in base.split(" "):
         if not elm:
             continue
         if not capd and not (elm.isdigit() or elm.upper() == elm):

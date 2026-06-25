@@ -1,4 +1,12 @@
-__all__ = ["datestr2ts", "tc2s", "s2time", "f2tc", "s2tc", "s2words", "format_time"]
+__all__ = [
+    "datestr2ts",
+    "tc2s",
+    "s2time",
+    "f2tc",
+    "s2tc",
+    "s2words",
+    "format_time",
+]
 
 import datetime
 import time
@@ -171,8 +179,9 @@ def s2words(secs: int) -> str:
 
 
 def format_time(
-    timestamp: int = None,
+    timestamp: float | None = None,
     time_format: str = "%Y-%m-%d %H:%M:%S",
+    *,
     never_placeholder: str = "never",
     gmt: bool = False,
 ) -> str:

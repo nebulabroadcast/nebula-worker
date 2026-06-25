@@ -9,7 +9,7 @@ def filter_deinterlace():
 
 
 def filter_arc(w, h, aspect):
-    """Aspect ratio convertor. you must specify output size and source aspect ratio (as float)"""
+    """Aspect ratio convertor. Specify output size and source aspect ratio (as float)"""
     taspect = float(w) / h
     if abs(taspect - aspect) < 0.01:
         return f"scale={w}:{h}"

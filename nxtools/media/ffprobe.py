@@ -3,13 +3,14 @@ __all__ = ["ffprobe"]
 import json
 import os
 import subprocess
+from typing import Any
 
 from nxtools.files import FileObject
-from nxtools.logging import *
+from nxtools.logging import logging
 from nxtools.text import indent
 
 
-def ffprobe(input_file: str, verbose: bool = False) -> dict:
+def ffprobe(input_file: str, verbose: bool = False) -> dict[str, Any]:
     """
     Extract metadata from a media file using ffprobe
     and returns a dictionary object with the result
@@ -27,7 +28,7 @@ def ffprobe(input_file: str, verbose: bool = False) -> dict:
     if isinstance(input_file, FileObject):
         exists = input_file.exists
         path = input_file.path
-    elif type(input_file) == str:
+    elif isinstance(input_file, str):
         exists = os.path.exists(input_file)
         path = input_file
     else:
@@ -48,5 +49,5 @@ def ffprobe(input_file: str, verbose: bool = False) -> dict:
             logging.error(f"Unable to read media file {input_file}\n\n{error_msg}\n\n")
         else:
             logging.warning(f"Unable to read media file {input_file}")
-        return False
+        return {}
     return json.loads(res)
