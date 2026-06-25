@@ -322,6 +322,6 @@ def get_midi(dgram: bytes, start_index: int) -> tuple[tuple[int, int, int, int],
         dgr = dgram[start_index : start_index + _INT_DGRAM_LEN]  # noqa
         val = struct.unpack(">I", dgr)[0]
         midi_msg = tuple((val & 0xFF << 8 * i) >> 8 * i for i in range(3, -1, -1))
-        return (midi_msg, start_index + _INT_DGRAM_LEN)  # type: ignore
+        return (midi_msg, start_index + _INT_DGRAM_LEN)
     except (struct.error, TypeError) as e:
         raise OSCParseError(f"Could not parse datagram {e}") from e

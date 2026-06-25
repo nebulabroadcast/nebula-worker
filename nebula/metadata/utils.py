@@ -94,7 +94,7 @@ def make_cs_tree(
     if order == "value":
         items.sort(key=lambda x: x["value"])  # type: ignore
     elif order in ["title", "alias"]:
-        items.sort(key=lambda x: unaccent(x["title"]))  # type: ignore
+        items.sort(key=lambda x: unaccent(x["title"]))
 
     parents: defaultdict[str, list[Any]] = defaultdict(list[Any])
 

@@ -23,7 +23,7 @@ class OSCHandler(socketserver.BaseRequestHandler):
 
 
 class OSCServer(socketserver.UDPServer):
-    def __init__(self, host: str, port: int, handler: Callable) -> None:
+    def __init__(self, host: str, port: int, handler: Callable) -> None:  # type: ignore[type-arg]
         self.handle = handler
         super().__init__((host, port), OSCHandler)
 
