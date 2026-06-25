@@ -51,7 +51,7 @@ class CasparCG:
             m = f"Unable to connect {self}. Connection refused"
             log.error(m)
             raise CasparConnectionException(m) from e
-        except (socket.timeout, TimeoutError) as e:
+        except TimeoutError as e:
             m = f"Unable to connect {self}. Connection timeout"
             log.error(m)
             raise CasparConnectionException(m) from e
@@ -107,7 +107,7 @@ class CasparCG:
             except BrokenPipeError as e:
                 self.close()
                 raise CasparConnectionException("CasparCG connection broken") from e
-            except (socket.timeout, TimeoutError) as e:
+            except TimeoutError as e:
                 self.close()
                 raise CasparConnectionException("CasparCG query timed out") from e
             except OSError as e:

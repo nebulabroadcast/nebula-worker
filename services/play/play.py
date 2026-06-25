@@ -19,11 +19,7 @@ DEFAULT_STATUS = {
 
 def create_controller(parent) -> BaseController:
     engine = parent.channel.engine
-    if engine == "vlc":
-        from .vlc.vlc_controller import VlcController
-
-        return VlcController(parent)
-    elif engine == "conti":
+    if engine == "conti":
         from .conti.conti_controller import ContiController
 
         return ContiController(parent)

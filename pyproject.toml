@@ -77,7 +77,6 @@ module = [
   "nxtools.media",
   "promexp",
   "psycopg2",
-  "vlc",
   "mistune",
   "conti",
 ]
