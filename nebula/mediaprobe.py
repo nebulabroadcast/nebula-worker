@@ -5,7 +5,7 @@ from nxtools import tc2s
 from nxtools.media import ffprobe
 
 
-class AudioTrack(dict):
+class AudioTrack(dict[str, Any]):
     @property
     def id(self) -> int:
         return self["index"]
