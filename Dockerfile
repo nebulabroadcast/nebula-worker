@@ -1,4 +1,4 @@
-FROM nebulabroadcast/nebula-worker-base:6.1
+FROM nebulabroadcast/nebula-worker-base:6.1.0
 
 ENV PYTHONUNBUFFERED=1
 

@@ -2,12 +2,11 @@
 name = "nebula-worker"
 version = "6.1.0"
 description = ""
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12"
 dependencies = [
     "PyYAML>=6.0",
     "conti>=1.0",
     "mistune>=2.0.4",
-    "nxtools>=1.6",
     "promexp>=1.0.2",
     "psutil>=5.9.4",
     "psycopg2-binary>=2.9.3",
@@ -15,7 +14,9 @@ dependencies = [
     "redis>=4.5.4",
     "requests>=2.32.0",
     "python-dotenv>=0.21.0",
-    "Jinja2>=3.1.4"
+    "Jinja2>=3.1.4",
+    "colorama>=0.4.6",
+    "unidecode>=1.4.0",
 ]
 
 [dependency-groups]

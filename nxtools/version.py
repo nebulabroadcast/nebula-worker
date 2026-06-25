@@ -1,0 +1,3 @@
+__all__ = ["NXTOOLS_VERSION"]
+
+NXTOOLS_VERSION = 1.6
