@@ -178,7 +178,7 @@ class CasparController(BaseController):
                 nebula.log.traceback("Playout on_change failed")
 
         if self.current_item and (self.cued_item is None) and not self.cueing:
-            #self.cueing = True
+            # self.cueing = True
             if not self.parent.cue_next():
                 self.cueing = None
 

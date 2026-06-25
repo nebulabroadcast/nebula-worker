@@ -336,7 +336,7 @@ class Service(BaseService):
         assert self.controller
 
         ctrl = self.controller
-    
+
         stat = {
             "id_channel": self.channel.id,
             "fps": float(self.fps),
