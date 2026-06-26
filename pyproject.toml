@@ -74,8 +74,6 @@ warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
 module = [
-  "nxtools",
-  "nxtools.media",
   "promexp",
   "psycopg2",
   "mistune",

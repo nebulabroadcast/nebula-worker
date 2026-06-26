@@ -16,10 +16,8 @@ class BaseController:
     current_fname: str | None = None
     cued_fname: str | None = None
     paused: bool = False
-    position: float = 0.0
-    duration: float | None = None
     loop: bool = False
-    cueing: bool = False
+    cueing: str | None = None
 
     def __init__(self, parent: "PlayService"):
         self.parent = parent
@@ -70,3 +68,11 @@ class BaseController:
     @property
     def request_time(self) -> float:
         return time.time()
+
+    @property
+    def position(self) -> float:
+        return 0.0
+
+    @property
+    def duration(self) -> float | None:
+        return None

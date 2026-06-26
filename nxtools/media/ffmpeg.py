@@ -5,7 +5,6 @@ import signal
 import subprocess
 import sys
 
-from nxtools.common import PLATFORM
 from nxtools.logging import logging
 from nxtools.text import indent
 
@@ -45,18 +44,26 @@ class FFMPEG:
 
     @property
     def stdin(self):
+        if self.proc is None:
+            raise RuntimeError("FFMPEG process is not running")
         return self.proc.stdin
 
     @property
     def stdout(self):
+        if self.proc is None:
+            raise RuntimeError("FFMPEG process is not running")
         return self.proc.stdout
 
     @property
     def stderr(self):
+        if self.proc is None:
+            raise RuntimeError("FFMPEG process is not running")
         return self.proc.stderr
 
     @property
-    def return_code(self):
+    def return_code(self) -> int | None:
+        if self.proc is None:
+            return None
         return self.proc.returncode
 
     def start(self, stdin=None, stdout=None, stderr=subprocess.PIPE):
@@ -69,13 +76,10 @@ class FFMPEG:
             stderr=stderr,
         )
 
-    def stop(self):
+    def stop(self) -> bool:
         if not self.proc:
             return False
-        if PLATFORM == "windows":
-            self.proc.send_signal(signal.CTRL_C_EVENT)
-        else:
-            self.proc.send_signal(signal.SIGINT)
+        self.proc.send_signal(signal.SIGINT)
         return True
 
     def wait(self, progress_handler=None):
