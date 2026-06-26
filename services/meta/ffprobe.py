@@ -1,12 +1,11 @@
 import difflib
 
-from nxtools import get_base_name, slugify
-
 import nebula
 from nebula.enum import MetaClass
 from nebula.mediaprobe import mediaprobe
 from nebula.objects import Asset
 from nebula.settings import settings
+from nxtools import get_base_name, slugify
 
 
 def string2cs(key: str, value: str):

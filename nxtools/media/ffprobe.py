@@ -10,7 +10,7 @@ from nxtools.logging import logging
 from nxtools.text import indent
 
 
-def ffprobe(input_file: str, verbose: bool = False) -> dict[str, Any]:
+def ffprobe(input_file: str | FileObject, verbose: bool = False) -> dict[str, Any]:
     """
     Extract metadata from a media file using ffprobe
     and returns a dictionary object with the result

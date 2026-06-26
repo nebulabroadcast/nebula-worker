@@ -105,7 +105,7 @@ class PlayoutPlugin:
             return ""
         if not hasattr(self.service.controller, "caspar_channel"):
             return ""
-        return f"{self.service.controller.caspar_channel}-{id_layer}"  # type: ignore
+        return f"{self.service.controller.caspar_channel}-{id_layer}"
 
     def query(self, query, **kwargs):
         if not self.service.controller:

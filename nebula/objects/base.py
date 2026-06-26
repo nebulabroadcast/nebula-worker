@@ -3,14 +3,13 @@ import pprint
 import time
 from typing import TYPE_CHECKING, Any
 
-from nxtools import slugify
-
 from nebula.db import DB
 from nebula.log import log
 from nebula.messaging import messaging
 from nebula.metadata.format import format_meta
 from nebula.metadata.normalize import normalize_meta
 from nebula.settings import settings
+from nxtools import slugify
 
 if TYPE_CHECKING:
     from nebula.objects.asset import Asset

@@ -5,7 +5,7 @@ description = ""
 requires-python = ">=3.12"
 dependencies = [
     "PyYAML>=6.0",
-    "conti>=1.0",
+    "conti>=1.1.0",
     "mistune>=2.0.4",
     "promexp>=1.0.2",
     "psutil>=5.9.4",

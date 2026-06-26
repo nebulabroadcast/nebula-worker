@@ -1,11 +1,10 @@
 import os
 
-from nxtools import FileObject, get_files, xml
-
 import nebula
 from nebula.base_service import BaseService
 from nebula.enum import ContentType, JobState, MediaType
 from nebula.filetypes import FileTypes
+from nxtools import FileObject, get_files, xml
 
 from .common import ImportDefinition, create_error
 from .process import import_asset

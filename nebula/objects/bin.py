@@ -1,9 +1,8 @@
 from typing import TYPE_CHECKING, Optional
 
-from nxtools import s2tc
-
 from nebula.log import log
 from nebula.objects.base import BaseObject, object_helper
+from nxtools import s2tc
 
 if TYPE_CHECKING:
     from nebula.objects.event import Event

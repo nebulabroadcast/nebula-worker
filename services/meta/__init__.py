@@ -2,8 +2,6 @@ import os
 import time
 from typing import Literal
 
-from nxtools import FileObject
-
 import nebula
 from nebula.base_service import BaseService
 from nebula.db import DB
@@ -11,6 +9,7 @@ from nebula.enum import ContentType, MediaType, ObjectStatus
 from nebula.objects import Asset
 from nebula.settings import settings
 from nebula.storages import storages
+from nxtools import FileObject
 
 from .ffprobe import ffprobe_asset
 

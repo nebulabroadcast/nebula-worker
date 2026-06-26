@@ -154,7 +154,7 @@ def s2tc(secs: float, base: float = 25) -> str:
     return f"{hd:02d}:{mm:02d}:{ss:02d}:{ff:02d}"
 
 
-def s2words(secs: int) -> str:
+def s2words(secs: float) -> str:
     """Create a textual (english) representation of given number of seconds.
 
     This function is useful for showing estimated time of a process.

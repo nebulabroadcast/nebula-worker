@@ -1,12 +1,11 @@
-from conti import Conti, ContiSource
-
 import nebula
+from conti import Conti, ContiSource
 
 from ..base_controller import BaseController
 
 
 class NebulaContiSource(ContiSource):
-    def __init__(self, parent, path, **kwargs):
+    def __init__(self, parent: "Conti", path: str, **kwargs):
         super().__init__(parent, path, **kwargs)
         self.item = kwargs["item"]
 
@@ -14,10 +13,10 @@ class NebulaContiSource(ContiSource):
 class NebulaConti(Conti):
     parent: "ContiController"
 
-    def append_next_item(self):
+    def append_next_item(self) -> None:
         self.parent.parent.cue_next()
 
-    def progress_handler(self):
+    def progress_handler(self) -> None:
         self.parent._position = self.current.position if self.current else 0
         self.parent._duration = self.current.duration if self.current else 0
         self.parent.parent.on_progress()
@@ -37,7 +36,7 @@ class ContiController(BaseController):
             "outputs": self.parent.channel.config.get("conti_outputs", []),
         }
         settings.update(self.parent.channel.config.get("conti_settings", {}))
-        self.conti = NebulaConti(None, **settings)
+        self.conti = NebulaConti(None, logger=nebula.log, **settings)
         self.conti.parent = self
 
     @property

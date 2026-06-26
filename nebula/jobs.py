@@ -2,13 +2,12 @@ import json
 import time
 from typing import Any
 
-from nxtools import xml
-
 from nebula.db import DB
 from nebula.enum import ContentType, JobState, MediaType, ObjectStatus
 from nebula.log import log
 from nebula.messaging import messaging
 from nebula.objects import Asset
+from nxtools import xml
 
 _ = ObjectStatus, ContentType, MediaType, JobState
 

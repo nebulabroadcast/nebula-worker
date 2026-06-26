@@ -1,13 +1,12 @@
 import os
 import time
 
-from nxtools import FileObject
-
 import nebula
 from nebula.db import DB
 from nebula.enum import ObjectStatus
 from nebula.jobs import Job, send_to
 from nebula.objects import Asset
+from nxtools import FileObject
 
 from .common import ImportDefinition, create_error
 from .transcoder import ImportTranscoder
