@@ -38,7 +38,7 @@ class PlayoutRequestHandler(BaseHTTPRequestHandler):
 
         length = int(self.headers.get("content-length", -1))
         # read1 is not an error!
-        postvars = json.loads(self.rfile.read1(length))  # type: ignore
+        postvars = json.loads(self.rfile.read1(length))
 
         method = self.path.lstrip("/").split("/")[0]
 

@@ -1,26 +1,24 @@
-import time
-
-from conti import Conti, ContiSource
-
 import nebula
+from conti import Conti, ContiSource
 
 from ..base_controller import BaseController
 
 
 class NebulaContiSource(ContiSource):
-    def __init__(self, parent, path, **kwargs):
+    def __init__(self, parent: "Conti", path: str, **kwargs):
         super().__init__(parent, path, **kwargs)
         self.item = kwargs["item"]
 
 
 class NebulaConti(Conti):
-    def append_next_item(self):
+    parent: "ContiController"
+
+    def append_next_item(self) -> None:
         self.parent.parent.cue_next()
 
-    def progress_handler(self):
-        self.parent.position = self.current.position
-        self.parent.duration = self.current.duration
-        self.parent.request_time = time.time()
+    def progress_handler(self) -> None:
+        self.parent._position = self.current.position if self.current else 0
+        self.parent._duration = self.current.duration if self.current else 0
         self.parent.parent.on_progress()
 
 
@@ -31,32 +29,51 @@ class ContiController(BaseController):
         self.parent = parent
         self.cueing = None
         self.cued = None
-        self.request_time = time.time()
-        self.position = self.duration = 0
+        self._position = self._duration = 0
         settings = {
             "playlist_length": 2,
             "blocking": False,
             "outputs": self.parent.channel.config.get("conti_outputs", []),
         }
         settings.update(self.parent.channel.config.get("conti_settings", {}))
-        self.conti = NebulaConti(None, **settings)
+        self.conti = NebulaConti(None, logger=nebula.log, **settings)
         self.conti.parent = self
 
     @property
     def current_item(self):
         return self.conti.current.item if self.conti.current else None
 
+    @current_item.setter
+    def current_item(self, value: nebula.Item | None) -> None:
+        _ = value
+        nebula.log.warning("current_item is read-only")
+
     @property
     def current_fname(self):
         return self.conti.current.path if self.conti.current else None
+
+    @current_fname.setter
+    def current_fname(self, value: str | None) -> None:
+        _ = value
+        nebula.log.warning("current_fname is read-only")
 
     @property
     def cued_item(self):
         return self.cued.item if self.cued else None
 
+    @cued_item.setter
+    def cued_item(self, value: nebula.Item | None) -> None:
+        _ = value
+        nebula.log.warning("cued_item is read-only")
+
     @property
     def cued_fname(self):
         return self.cued.path if self.cued else None
+
+    @cued_fname.setter
+    def cued_fname(self, value: str | None) -> None:
+        _ = value
+        nebula.log.warning("cued_fname is read-only")
 
     @property
     def id_channel(self):
@@ -79,19 +96,29 @@ class ContiController(BaseController):
         _ = prop, value
         return True
 
-    def cue(self, item, full_path, **kwargs):
+    def cue(
+        self,
+        fname: str,
+        item: nebula.Item,
+        layer: int | None = None,
+        play: bool = False,
+        auto: bool = True,
+        loop: bool = False,
+        **kwargs,
+    ) -> None:
+
         kwargs["item"] = item
-        kwargs["meta"] = item.asset.meta
+        kwargs["meta"] = item.asset.meta if item.asset else {}
 
         if kwargs.get("mark_in") is None:
             kwargs["mark_in"] = 0
         if kwargs.get("mark_out") is None:
             kwargs["mark_out"] = 0
 
-        self.cued = NebulaContiSource(self.conti, full_path, **kwargs)
+        self.cued = NebulaContiSource(self.conti, fname, **kwargs)
         # TODO: add per-source filters here
         self.cued.open()
-        self.cueing = False
+        self.cueing = None
 
         assert self.cued, "Failed to cue item"
 
@@ -105,22 +132,31 @@ class ContiController(BaseController):
 
         if kwargs.get("play", False):
             return self.take()
-        nebula.log.info(f"Cued item {self.cued_item} ({full_path})")
+        nebula.log.info(f"Cued item {self.cued_item} ({fname})")
 
-    def take(self, **kwargs):
-        _ = kwargs
+    def take(self, layer: int | None = None) -> None:
+        _ = layer
         self.conti.take()
 
-    def freeze(self, **kwargs):
-        _ = kwargs
+    def freeze(self, layer: int | None = None) -> None:
+        _ = layer
         self.conti.freeze()
 
-    def retake(self, **kwargs):
-        _ = kwargs
+    def retake(self, layer: int | None = None) -> None:
+        _ = layer
+        pass
 
-    def abort(self, **kwargs):
-        _ = kwargs
+    def abort(self, layer: int | None = None) -> None:
+        _ = layer
         self.conti.abort()
 
     def shutdown(self):
         self.conti.stop()
+
+    @property
+    def position(self) -> float:
+        return self._position
+
+    @property
+    def duration(self) -> float | None:
+        return self._duration

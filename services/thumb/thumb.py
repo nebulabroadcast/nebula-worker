@@ -2,11 +2,10 @@ import json
 import os
 from typing import TYPE_CHECKING
 
-from nxtools import ffmpeg
-
 import nebula
 from nebula.base_service import BaseService
 from nebula.storages import storages
+from nxtools import ffmpeg
 
 if TYPE_CHECKING:
     pass

@@ -2,7 +2,8 @@ import functools
 import os
 import signal
 import subprocess
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import jinja2
 

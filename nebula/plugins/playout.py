@@ -1,6 +1,7 @@
 import os
 import threading
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -43,7 +44,7 @@ class PlayoutPlugin:
     busy: bool = False
 
     def __init__(self, service: "PlayService"):
-        self.service: "PlayService" = service
+        self.service: PlayService = service
         self.busy: bool = True
         if self.channel.playout_storage and self.channel.playout_dir:
             self.playout_dir = os.path.join(
@@ -67,10 +68,14 @@ class PlayoutPlugin:
 
     @property
     def id_channel(self) -> int:
+        if not self.service.channel:
+            raise RuntimeError("Channel not initialized")
         return self.service.channel.id
 
     @property
     def channel(self) -> "PlayoutChannelSettings":
+        if not self.service.channel:
+            raise RuntimeError("Channel not initialized")
         return self.service.channel
 
     @property
@@ -83,22 +88,30 @@ class PlayoutPlugin:
 
     @property
     def position(self):
+        if not self.service.controller:
+            return 0
         return self.service.controller.position
 
     @property
     def duration(self):
+        if not self.service.controller:
+            return 0
         return self.service.controller.duration
 
     def layer(self, id_layer: int | None = None) -> str:
         if id_layer is None:
             id_layer = self.id_layer
+        if not self.service.controller:
+            return ""
         if not hasattr(self.service.controller, "caspar_channel"):
             return ""
         return f"{self.service.controller.caspar_channel}-{id_layer}"
 
     def query(self, query, **kwargs):
+        if not self.service.controller:
+            return
         try:
-            return self.service.controller.query(query, **kwargs)
+            return self.service.controller.query(query, **kwargs)  # type: ignore
         except Exception as e:
             log.error(f"Plugin '{self.name}': {e}")
 

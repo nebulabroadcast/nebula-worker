@@ -19,6 +19,9 @@ class CasparClip:
         self.loop = False
         self.producer = "empty"
 
+    def __repr__(self):
+        return f"CasparClip(name={self.name}, position={self.position})"
+
     def handle_osc(self, address, *args):
         if address == ["paused"]:
             self.paused = args[0]
@@ -39,9 +42,6 @@ class CasparClip:
                 self.fps = fractions.Fraction(*args)
             except ZeroDivisionError:
                 pass
-
-        else:
-            return
 
     def __len__(self):
         return self.producer != "empty"
@@ -97,23 +97,23 @@ class CasparOSCServer:
         nebula.log.info("OSC server stopped")
 
     def shutdown(self):
+        nebula.log.info("Shutting down OSC server")
         self.osc_server.shutdown()
 
-    def handle_osc(self, address, *args):
+    def handle_osc(self, address, *args) -> None:
         if not self.first_message_arrived:
             nebula.log.info("OSC connection established")
             self.first_message_arrived = True
         if isinstance(address, str):
             address = address.split("/")
         if len(address) < 2:
-            return False
+            return
         if address[1] != "channel":
-            print("CTRL ERR", address)
-            return False
+            return
         try:
             channel = int(address[2])
         except (KeyError, ValueError):
-            return False
+            return
 
         if channel not in self.channels:
             self.channels[channel] = CasparChannel()

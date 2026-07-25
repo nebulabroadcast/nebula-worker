@@ -20,15 +20,21 @@ class CasparController(BaseController):
 
     def __init__(self, parent: "PlayService"):
         self.parent = parent
+        self.init_controller()
 
-        self.caspar_host: str = parent.channel.config.get("caspar_host", "localhost")
-        self.caspar_port: int = int(parent.channel.config.get("caspar_port", 5250))
-        self.caspar_osc_port: int = int(
-            parent.channel.config.get("caspar_osc_port", 5253)
+    def init_controller(self) -> None:
+        self.caspar_host: str = self.parent.channel.config.get(
+            "caspar_host", "localhost"
         )
-        self.caspar_channel: int = int(parent.channel.config.get("caspar_channel", 1))
+        self.caspar_port: int = int(self.parent.channel.config.get("caspar_port", 5250))
+        self.caspar_osc_port: int = int(
+            self.parent.channel.config.get("caspar_osc_port", 5253)
+        )
+        self.caspar_channel: int = int(
+            self.parent.channel.config.get("caspar_channel", 1)
+        )
         self.caspar_feed_layer: int = int(
-            parent.channel.config.get("caspar_feed_layer", 10)
+            self.parent.channel.config.get("caspar_feed_layer", 10)
         )
 
         self.should_run = True
@@ -36,7 +42,7 @@ class CasparController(BaseController):
         self.current_fname: str | None = None
         self.cued_item: nebula.Item | None = None
         self.cued_fname: str | None = None
-        self.cueing: str | bool = False
+        self.cueing: str | None = None  # fname of the item currently being cued
         self.cueing_time: float = 0
         self.cueing_item: nebula.Item | None = None
         self.stalled = False
@@ -48,12 +54,7 @@ class CasparController(BaseController):
         self.pos: float = 0
         self.dur: float = 0
 
-        try:
-            self.connect()
-        except Exception:
-            nebula.log.error("Unable to connect CasparCG Server. Shutting down.")
-            self.parent.shutdown()
-            return
+        self.connect()
 
         self.caspar_data = CasparOSCServer(self.caspar_osc_port)
         self.lock = threading.Lock()
@@ -72,10 +73,6 @@ class CasparController(BaseController):
     @property
     def id_channel(self) -> int:
         return self.parent.channel.id
-
-    @property
-    def request_time(self) -> float:
-        return time.time()
 
     @property
     def fps(self) -> float:
@@ -127,6 +124,7 @@ class CasparController(BaseController):
 
         current_fname = os.path.splitext(foreground.name)[0]
         cued_fname = os.path.splitext(background.name)[0]
+
         pos = foreground.position
         dur = foreground.duration
 
@@ -180,9 +178,9 @@ class CasparController(BaseController):
                 nebula.log.traceback("Playout on_change failed")
 
         if self.current_item and (self.cued_item is None) and not self.cueing:
-            self.cueing = True
+            # self.cueing = True
             if not self.parent.cue_next():
-                self.cueing = False
+                self.cueing = None
 
         if self.cueing:
             if cued_fname == self.cueing:
@@ -191,19 +189,19 @@ class CasparController(BaseController):
                     f"Cued {self.cued_item}. Current item {self.current_item}"
                 )
                 self.cueing_item = None
-                self.cueing = False
+                self.cueing = None
             elif self.parent.cued_live:
                 if background.producer != "empty":
                     nebula.log.success(f"Cued {self.cueing}")
                     self.cued_item = self.cueing_item
                     self.cueing_item = None
-                    self.cueing = False
+                    self.cueing = None
 
             else:
                 # nebula.log.debug(f"Waiting for cue {self.cueing} (is {cued_fname})")
                 if time.time() - self.cueing_time > 5 and self.current_item:
                     nebula.log.warning("Cueing again")
-                    self.cueing = False
+                    self.cueing = None
                     self.parent.cue_next()
 
         elif (
@@ -264,13 +262,14 @@ class CasparController(BaseController):
         except CasparException:
             self.cued_item = None
             self.cued_fname = None
-            self.cueing = False
+            self.cueing = None
             self.cueing_item = None
             self.cueing_time = 0
             raise
 
         if play:
-            self.cueing = False
+            nebula.log.debug(f"Play command sent for {item} ({fname})")
+            self.cueing = None
             self.cueing_item = None
             self.cueing_time = 0
             self.current_item = item

@@ -1,4 +1,4 @@
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
@@ -54,7 +54,7 @@ class BaseSystemSettings(SettingsModel):
 
     site_name: str = Field(
         "nebula",
-        regex=r"^[a-zA-Z0-9_]+$",
+        pattern=r"^[a-zA-Z0-9_]+$",
         title="Site name",
         description="A name used as the site (instance) identification",
     )
@@ -102,8 +102,13 @@ class SystemSettings(BaseSystemSettings):
         None,
         title="Mail from",
         description="Email address used as the sender",
-        example="Nebula <noreply@example.com>",
+        examples=["Nebula <noreply@example.com>"],
     )
+
+
+class BaseListItemModel(SettingsModel):
+    id: int = Field(..., title="ID", examples=[1])
+    name: str = Field(..., title="Name", examples=["Name"])
 
 
 #
@@ -127,16 +132,16 @@ class ActionSettings(BaseActionSettings):
 
 
 class BaseServiceSettings(SettingsModel):
-    id: int = Field(..., title="Service ID", example=1)
-    name: str = Field(..., title="Service name", example="conv01")
-    type: str = Field(..., title="Service type", example="conv")
-    host: str = Field(..., title="Host", example="node01")
-    autostart: bool = Field(True, title="Autostart", example=True)
+    id: int = Field(..., title="Service ID", examples=[1])
+    name: str = Field(..., title="Service name", examples=["conv01"])
+    type: str = Field(..., title="Service type", examples=["conv"])
+    host: str = Field(..., title="Host", examples=["node01"])
+    autostart: bool = Field(True, title="Autostart", examples=[True])
     loop_delay: int = Field(
         5, title="Loop delay", description="Seconds of sleep between runs"
     )
     state: ServiceState = Field(ServiceState.STOPPED)
-    last_seen: int = Field(0, title="Last seen", example=1949155890)
+    last_seen: int = Field(0, title="Last seen", examples=[1949155890])
 
 
 class ServiceSettings(BaseServiceSettings):
@@ -149,19 +154,92 @@ class ServiceSettings(BaseServiceSettings):
 #
 
 
-class BaseStorageSettings(SettingsModel):
-    id: int = Field(..., title="Storage ID", example=1)
-    name: str = Field(..., title="Storage name", name="Production")
-    protocol: Literal["samba", "local"] = Field(
-        ...,
-        title="Connection protocol",
-        example="samba",
-    )
-    path: str = Field(..., title="Path", example="//server/share")
+class BaseStorageSettings(BaseListItemModel):
+    protocol: Annotated[
+        Literal["samba", "local"],
+        Field(
+            title="Connection protocol",
+            examples=["samba", "local"],
+        ),
+    ]
+
+    path: Annotated[
+        str,
+        Field(
+            title="Path",
+            examples=["//server/share"],
+        ),
+    ]
 
 
-class StorageSettings(BaseStorageSettings):
-    options: dict[str, Any] = Field(default_factory=dict)
+class ExtendedStorageSettings(BaseStorageSettings):
+    options: Annotated[
+        dict[str, Any],
+        Field(
+            default_factory=dict,
+            title="Connection options",
+        ),
+    ]
+
+
+class StorageOverrideSettings(SettingsModel):
+    hostname: Annotated[
+        str,
+        Field(
+            title="Hostname",
+            description=(
+                "Hostname of the host for which the override applies"
+                " (use __server__ for the server hosts)"
+            ),
+            examples=[
+                "worker01",
+                "__server__",
+            ],
+        ),
+    ]
+
+    enabled: Annotated[
+        bool,
+        Field(
+            title="Enabled",
+            description="Set to false to disale the storage access on the host",
+        ),
+    ] = True
+
+    protocol: Annotated[
+        Literal["samba", "local"] | None,
+        Field(
+            title="Connection protocol",
+            examples=["samba", "local"],
+        ),
+    ] = None
+
+    path: Annotated[
+        str | None,
+        Field(
+            title="Path",
+            examples=["//server/share"],
+        ),
+    ] = None
+
+    options: Annotated[
+        dict[str, Any],
+        Field(
+            default_factory=dict,
+            title="Connection options",
+        ),
+    ]
+
+
+class StorageSettings(ExtendedStorageSettings):
+    overrides: Annotated[
+        list[StorageOverrideSettings],
+        Field(
+            default_factory=list,
+            title="Overrides",
+            description="List of storage overrides for specific hosts",
+        ),
+    ]
 
 
 #
@@ -236,7 +314,7 @@ class BasePlayoutChannelSettings(SettingsModel):
     day_start: DayStart = Field((7, 0))
     rundown_columns: list[str] = Field(default_factory=list)
     fields: list[FolderField] = Field(
-        fields="Fields",
+        title="Fields",
         description="Metadata fields available for the channel events",
         default_factory=lambda: [
             FolderField(name="title"),
@@ -261,20 +339,13 @@ class PlayoutChannelSettings(BasePlayoutChannelSettings):
     playout_dir: str | None = None
     playout_container: str | None = None
     allow_remote: bool = Field(False)
-    controller_host: str | None = None
-    controller_port: int | None = None
+    controller_host: str
+    controller_port: int
 
 
 #
 # Server settings
 #
-
-
-def find_id(data: list[SettingsModel], id: int) -> SettingsModel | None:
-    for item in data:
-        if item.id == id:
-            return item
-    return None
 
 
 class ServerSettings(SettingsModel):
@@ -291,13 +362,25 @@ class ServerSettings(SettingsModel):
     playout_channels: list[PlayoutChannelSettings] = Field(default_factory=list)
 
     def get_folder(self, id_folder: int) -> FolderSettings | None:
-        return find_id(self.folders, id_folder)
+        for item in self.folders:
+            if item.id == id_folder:
+                return item
+        return None
 
     def get_view(self, id_view: int) -> ViewSettings | None:
-        return find_id(self.views, id_view)
+        for item in self.views:
+            if item.id == id_view:
+                return item
+        return None
 
     def get_storage(self, id_storage: int) -> StorageSettings | None:
-        return find_id(self.storages, id_storage)
+        for item in self.storages:
+            if item.id == id_storage:
+                return item
+        return None
 
     def get_playout_channel(self, id_channel: int) -> PlayoutChannelSettings | None:
-        return find_id(self.playout_channels, id_channel)
+        for item in self.playout_channels:
+            if item.id == id_channel:
+                return item
+        return None

@@ -1,10 +1,9 @@
 from typing import TYPE_CHECKING, Any
 
-from nxtools import format_filesize, format_time, s2tc
-
 from nebula.enum import ContentType, MediaType, MetaClass, ObjectStatus, QCState
 from nebula.metadata.utils import get_cs_titles
 from nebula.settings import settings
+from nxtools import format_filesize, format_time, s2tc
 
 if TYPE_CHECKING:
     from nebula.objects.base import BaseObject
@@ -19,6 +18,8 @@ def format_cs_values(meta_type: "MetaType", values: list[str]) -> str:
 
 def format_meta(object: "BaseObject", key: str, **kwargs: dict[str, Any]) -> str:
     """Return a human-readable string representation of a metadata value."""
+
+    _ = kwargs  # Unused for now
 
     if not (value := object.get(key)):
         return ""

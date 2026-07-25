@@ -1,11 +1,11 @@
 import os
 import subprocess
-from typing import Any, Callable
-
-from nxtools import get_temp
+from collections.abc import Callable
+from typing import Any
 
 import nebula
 from nebula.storages import storages
+from nxtools import get_temp
 
 
 def temp_file(id_storage, ext):

@@ -2,11 +2,12 @@ import json
 import os
 import subprocess
 from functools import cached_property
+from typing import Any
 
-from nxtools import ffmpeg
 from pydantic import BaseModel
 
 import nebula
+from nxtools import ffmpeg
 
 from .profiles import PROFILES
 
@@ -103,7 +104,7 @@ class ImportTranscoder:
         self.profile_name = profile_name
 
     @property
-    def profile(self) -> dict:
+    def profile(self) -> dict[str, Any]:
         return PROFILES[self.profile_name]
 
     @cached_property

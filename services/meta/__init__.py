@@ -2,8 +2,6 @@ import os
 import time
 from typing import Literal
 
-from nxtools import FileObject
-
 import nebula
 from nebula.base_service import BaseService
 from nebula.db import DB
@@ -11,6 +9,7 @@ from nebula.enum import ContentType, MediaType, ObjectStatus
 from nebula.objects import Asset
 from nebula.settings import settings
 from nebula.storages import storages
+from nxtools import FileObject
 
 from .ffprobe import ffprobe_asset
 
@@ -42,10 +41,10 @@ class Service(BaseService):
 
     def on_main(self):
         self.mounted_storages = []
-        for id_storage in storages:
-            storage_path = storages[id_storage].local_path
-            if os.path.exists(storage_path) and len(os.listdir(storage_path)) != 0:
-                self.mounted_storages.append(id_storage)
+        for storage in storages:
+            storage_path = storage.local_path
+            if os.path.isdir(storage_path) and len(os.listdir(storage_path)) != 0:
+                self.mounted_storages.append(storage.id)
 
         db = DB()
         # do not scan trashed and archived files

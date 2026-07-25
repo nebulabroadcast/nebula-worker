@@ -1,37 +1,37 @@
-[tool.poetry]
+[project]
 name = "nebula-worker"
-version = "6.0.6"
+version = "6.1.0"
 description = ""
-authors = ["Nebula Broadcast <info@nebulabroadcast.com>"]
+requires-python = ">=3.12"
+dependencies = [
+    "PyYAML>=6.0",
+    "conti>=1.1.0",
+    "mistune>=2.0.4",
+    "promexp>=1.0.2",
+    "psutil>=5.9.4",
+    "psycopg2-binary>=2.9.3",
+    "pydantic>=1.10.12",
+    "redis>=4.5.4",
+    "requests>=2.32.0",
+    "python-dotenv>=0.21.0",
+    "Jinja2>=3.1.4",
+    "colorama>=0.4.6",
+    "unidecode>=1.4.0",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-PyYAML = "^6.0"
-conti = "^1.0"
-mistune = "^2.0.4"
-nxtools = "^1.6"
-promexp = "^1.0.2"
-psutil = "^5.9.4"
-psycopg2-binary = "^2.9.3"
-pydantic = "^1.10.12"
-redis = "^4.5.4"
-requests = "^2.32.0"
-python-dotenv = "^0.21.0"
-Jinja2 = "^3.1.4"
-
-[tool.poetry.dev-dependencies]
-black = "^22.1.0"
-mypy = "^1.9"
-ruff = "^0.3.1"
-
+[dependency-groups]
+dev = [
+    "mypy>=1.14.1",
+    "ruff>=0.9.4",
+]
+ 
 [tool.ruff]
+fix = true
 line-length = 88
 
 [tool.ruff.format]
 indent-style = "space"
 line-ending = "auto"
-skip-magic-trailing-comma = false
-docstring-code-format = true
 
 [tool.ruff.lint]
 select = [
@@ -45,23 +45,39 @@ select = [
     "C4",    # flake8-comprehensions
     "UP",    # pyupgrade
     "ASYNC", # flake8-async
-  #    "SIM",   # flake8-simplify
     "ISC",   # flake8-implicit-str-concat
-  # "ANN",   # flake8-annotations
-  # "N",     # pep8-naming
-  # "D",     # pydocstyle
-  # "S",     # flake8-bandit
 ]
 
 ignore = [
     "ISC001",
     "B008",    # do not perform function calls in argument defaults
     "C901",    # too complex. C'mon - this is a complex project
-    "ANN101",  # missing type annotation for self
-    "ANN102",  # missing type annotation for cls
 ]
 
 
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+[tool.mypy]
+plugins = [
+  "pydantic.mypy"
+]
+
+check_untyped_defs = true
+disallow_any_generics = true
+exclude = "tests/|venv/|tool/|test_"
+explicit_package_bases = true
+no_implicit_reexport = true
+strict_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+# follow_imports = "silent"
+# strict = true
+# disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = [
+  "promexp",
+  "psycopg2",
+  "mistune",
+  "conti",
+]
+ignore_missing_imports = true
+follow_imports = "skip"

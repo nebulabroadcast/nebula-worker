@@ -1,12 +1,11 @@
-import imp
 import os
 import sys
 import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import nebula
 from nebula.base_service import BaseService
-from nebula.plugins import get_plugin_path
+from nebula.plugins import get_plugin_path, import_module
 
 if TYPE_CHECKING:
     from nebula.plugins.worker import WorkerPlugin
@@ -16,7 +15,7 @@ class Service(BaseService):
     def on_init(self):
         self.exec_init: str | None = None
         self.exec_main: str | None = None
-        self.plugin: Optional["WorkerPlugin"] = None
+        self.plugin: WorkerPlugin | None = None
 
         if "script" in self.settings.attrib:
             fname = self.settings.attrib["script"]
@@ -43,7 +42,7 @@ class Service(BaseService):
             nebula.log.error(f"Plugin {fname} not found")
             return False
 
-        py_mod = imp.load_source(mod_name, script_path)
+        py_mod = import_module(mod_name, script_path)
 
         if "Plugin" not in dir(py_mod):
             nebula.log.error(f"No plugin class found in {fname}")

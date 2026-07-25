@@ -1,6 +1,7 @@
 import socketserver
+from collections.abc import Callable
 from socket import socket
-from typing import Any, Callable, Tuple
+from typing import Any
 
 from .bundle import _BUNDLE_PREFIX
 from .osc_types import OSCParseError
@@ -22,14 +23,14 @@ class OSCHandler(socketserver.BaseRequestHandler):
 
 
 class OSCServer(socketserver.UDPServer):
-    def __init__(self, host: str, port: int, handler: Callable) -> None:
+    def __init__(self, host: str, port: int, handler: Callable) -> None:  # type: ignore[type-arg]
         self.handle = handler
         super().__init__((host, port), OSCHandler)
 
     def verify_request(
         self,
         request: socket | tuple[bytes, socket],
-        client_address: Tuple[str, int] | str,
+        client_address: tuple[str, int] | str,
     ) -> bool:
         _ = client_address
         if isinstance(request, socket):

@@ -3,8 +3,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any, Literal
 
-from nxtools import datestr2ts
-
 from nebula.db import DB
 from nebula.enum import MediaType, RunMode
 from nebula.log import log
@@ -12,6 +10,7 @@ from nebula.messaging import messaging
 from nebula.objects import Asset, Bin, Event, Item
 from nebula.settings import settings
 from nebula.storages import storages
+from nxtools import datestr2ts
 
 try:
     import mistune  # noqa
@@ -215,9 +214,9 @@ def get_next_item(
             _ = next_event.bin  # force bin preload
             assert next_event.bin, f"{next_event} event has no bin"
             assert next_event.bin.items, f"{next_event.bin} bin has no items"
-            assert not (
-                next_event["run_mode"] and not force_next_event
-            ), f"Next playlist run mode is not auto {next_event}"
+            assert not (next_event["run_mode"] and not force_next_event), (
+                f"Next playlist run mode is not auto {next_event}"
+            )
 
             if force == "prev":
                 next_item = next_event.bin.items[-1]

@@ -5,7 +5,7 @@ import nebula
 
 
 class BaseAgent:
-    def __init__(self, once=False) -> None:
+    def __init__(self, *, once: bool = False) -> None:
         self.first_run = True
         self.thread = None
         self.is_running = False

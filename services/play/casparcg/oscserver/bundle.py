@@ -1,6 +1,7 @@
 __all__ = ["OSCBundle"]
 
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 from .message import OSCMessage
 from .osc_types import OSCParseError, get_date, get_int
@@ -30,7 +31,7 @@ class OSCBundle:
             self._timestamp, index = get_date(self._dgram, index)
         except OSCParseError as pe:
             raise OSCParseError(
-                "Could not get the date from the datagram: %s" % pe
+                f"Could not get the date from the datagram: {pe}"
             ) from pe
         # Get the contents as a list of OscBundle and OscMessage.
         self._contents = self._parse_contents(index)
@@ -59,7 +60,7 @@ class OSCBundle:
                 elif OSCMessage.dgram_is_message(content_dgram):
                     contents.append(OSCMessage(content_dgram))
         except (OSCParseError, IndexError) as e:
-            raise OSCParseError("Could not parse a content datagram: %s" % e) from e
+            raise OSCParseError(f"Could not parse a content datagram: {e}") from e
 
         return contents
 

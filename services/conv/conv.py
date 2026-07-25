@@ -1,12 +1,11 @@
 import time
 
-from nxtools import s2words, xml
-
 import nebula
 from nebula.base_service import BaseService
 from nebula.db import DB
 from nebula.enum import JobState
 from nebula.jobs import Action, get_job
+from nxtools import s2words, xml
 from services.conv.ffmpeg import NebulaFFMPEG
 from services.conv.melt import NebulaMelt
 
@@ -58,6 +57,9 @@ class Service(BaseService):
         db.commit()
 
     def progress_handler(self, progress: float | None = None):
+        if not self.job:
+            return
+
         stat = self.job.get_status()
         if stat == JobState.RESTART:
             self.encoder.stop()
@@ -108,39 +110,39 @@ class Service(BaseService):
 
             self.encoder = available_encoders[using](asset, task, job_params)
 
-            nebula.log.debug(f"Configuring task {id_task+1} of {len(tasks)}")
+            nebula.log.debug(f"Configuring task {id_task + 1} of {len(tasks)}")
 
             try:
                 self.encoder.configure()
             except Exception as e:
-                self.job.fail(f"Failed to configure task {id_task+1}: {e}")
+                self.job.fail(f"Failed to configure task {id_task + 1}: {e}")
                 nebula.log.traceback()
                 return
 
-            nebula.log.info(f"Starting task {id_task+1} of {len(tasks)}")
+            nebula.log.info(f"Starting task {id_task + 1} of {len(tasks)}")
             try:
                 self.encoder.start()
                 self.encoder.wait(self.progress_handler)
             except Exception as e:
-                self.job.fail(f"Failed to encode task {id_task+1}: {e}")
+                self.job.fail(f"Failed to encode task {id_task + 1}: {e}")
                 nebula.log.traceback()
                 return
 
             if self.encoder.aborted:
                 return
 
-            nebula.log.debug(f"Finalizing task {id_task+1} of {len(tasks)}")
+            nebula.log.debug(f"Finalizing task {id_task + 1} of {len(tasks)}")
             try:
                 self.encoder.finalize()
             except Exception as e:
-                self.job.fail(f"Failed to finalize task {id_task+1}: {e}")
-                nebula.log.traceback()
+                self.job.fail(f"Failed to finalize task {id_task + 1}: {e}")
                 return
 
             job_params = self.encoder.params
 
         job = self.job  # noqa
         assert job
+        assert action
 
         for success_script in action.settings.findall("success"):
             nebula.log.info("Executing success script")

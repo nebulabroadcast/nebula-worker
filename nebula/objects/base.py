@@ -1,9 +1,7 @@
 import json
 import pprint
 import time
-from typing import TYPE_CHECKING, Any, Type
-
-from nxtools import slugify
+from typing import TYPE_CHECKING, Any
 
 from nebula.db import DB
 from nebula.log import log
@@ -11,6 +9,7 @@ from nebula.messaging import messaging
 from nebula.metadata.format import format_meta
 from nebula.metadata.normalize import normalize_meta
 from nebula.settings import settings
+from nxtools import slugify
 
 if TYPE_CHECKING:
     from nebula.objects.asset import Asset
@@ -76,9 +75,9 @@ class BaseObject:
         meta = kwargs.get("meta", {})
         if id:
             assert isinstance(id, int), f"{self.object_type} ID must be integer"
-        assert (
-            meta is not None
-        ), f"Unable to load {self.object_type}. Meta must not be 'None'"
+        assert meta is not None, (
+            f"Unable to load {self.object_type}. Meta must not be 'None'"
+        )
         assert hasattr(meta, "keys"), "Incorrect meta!"
         for key in meta:
             self.meta[key] = meta[key]
@@ -338,27 +337,27 @@ class ObjectHelper:
         self.classes[key] = value
 
     @property
-    def Asset(self) -> Type["Asset"]:
+    def Asset(self) -> type["Asset"]:
         assert "asset" in self.classes, "Asset class is not registered"
         return self.classes["asset"]
 
     @property
-    def Item(self) -> Type["Item"]:
+    def Item(self) -> type["Item"]:
         assert "item" in self.classes, "Item class is not registered"
         return self.classes["item"]
 
     @property
-    def Bin(self) -> Type["Bin"]:
+    def Bin(self) -> type["Bin"]:
         assert "bin" in self.classes, "Bin class is not registered"
         return self.classes["bin"]
 
     @property
-    def Event(self) -> Type["Event"]:
+    def Event(self) -> type["Event"]:
         assert "event" in self.classes, "Event class is not registered"
         return self.classes["event"]
 
     @property
-    def User(self) -> Type["User"]:
+    def User(self) -> type["User"]:
         assert "user" in self.classes, "User class is not registered"
         return self.classes["user"]
 

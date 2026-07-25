@@ -2,11 +2,13 @@ import os
 import re
 import signal
 import subprocess
+from inspect import cleandoc
 
 import nebula
 from nebula.storages import storages
 
 from .common import BaseEncoder, ConversionError, temp_file
+from .overlays import Overlay
 
 re_position = re.compile(r"time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})\d*", re.U | re.I)
 
@@ -24,13 +26,13 @@ class NebulaFFMPEG(BaseEncoder):
         self.ffparams.extend(["-i", self.asset.file_path])
         asset = self.asset
         params = self.params
-        assert asset
-        assert params is not None
+        _ = asset, params, Overlay
         self.error_log = ""
 
         for p in self.task:
             if p.tag == "param":
-                value = str(eval(p.text)) if p.text else ""
+                ptext = cleandoc(p.text.strip()) if p.text else ""
+                value = str(eval(ptext)) if p.text else ""
                 if p.attrib["name"] == "ss":
                     self.ffparams.insert(1, "-ss")
                     self.ffparams.insert(2, value)
@@ -161,8 +163,16 @@ class NebulaFFMPEG(BaseEncoder):
                     pass
 
         if self.proc.returncode > 0:
-            nebula.log.error(self.proc.stderr.read())
-            raise ConversionError("Encoding failed")
+            last_lines = self.error_log.splitlines()[-10:]
+            nebula.log.debug("FFMPEG error log:")
+            for line in last_lines:
+                nebula.log.debug(line)
+
+            lmsg = last_lines[-1] if last_lines else "Unknown error"
+            lmsg = lmsg.strip()
+            if lmsg:
+                lmsg = f" ({lmsg})"
+            raise ConversionError(f"Encoding failed{lmsg}")
 
         for temp_path, target_path in self.files.items():
             try:

@@ -1,15 +1,14 @@
-from nxtools import xml
-
 import nebula
 from nebula.base_service import BaseService
 from nebula.db import DB
 from nebula.enum import ObjectStatus
 from nebula.jobs import Action, send_to
 from nebula.objects import Asset
+from nxtools import xml
 
 
 class Service(BaseService):
-    def on_init(self):
+    def on_init(self) -> None:
         self.actions = []
         db = DB()
         # import actions are started by the import service, not the broker
@@ -30,8 +29,10 @@ class Service(BaseService):
             asset = Asset(meta=meta, db=db)
             self.proc(asset)
 
-    def proc(self, asset):
+    def proc(self, asset: Asset) -> None:
         for action in self.actions:
+            assert asset.id is not None
+
             if action.created_key in asset.meta:
                 continue
 

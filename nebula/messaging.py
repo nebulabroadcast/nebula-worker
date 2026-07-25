@@ -25,7 +25,7 @@ class Messaging:
 
     def connect(self):
         self.channel = f"nebula-{config.site_name}"
-        log.debug(f"Connecting messaging to {config.redis}", handlers=None)
+        log.debug(f"Connecting messaging to {config.redis}")
         try:
             self.connection = redis.from_url(
                 config.redis,
@@ -34,7 +34,7 @@ class Messaging:
                 socket_connect_timeout=3,
             )
         except Exception:
-            log.traceback("Unable to connect redis", handlers=None)
+            log.traceback("Unable to connect redis")
             return False
         return True
 
@@ -68,14 +68,10 @@ class Messaging:
         )
         try:
             self.connection.publish(self.channel, message)
-        except redis.exceptions.ConnectionError:
-            log.error("Unable to connect Redis to send a message.", handlers=None)
-            time.sleep(1)
-            self.connect()
         except Exception:
-            log.traceback(handlers=None)
+            log.error("Unable to send a message.")
+            time.sleep(1)
             self.connect()
 
 
 messaging = Messaging()
-log.messaging = messaging

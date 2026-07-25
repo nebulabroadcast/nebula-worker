@@ -1,11 +1,10 @@
 import os
 
-from nxtools import FileObject, get_files, xml
-
 import nebula
 from nebula.base_service import BaseService
 from nebula.enum import ContentType, JobState, MediaType
 from nebula.filetypes import FileTypes
+from nxtools import FileObject, get_files, xml
 
 from .common import ImportDefinition, create_error
 from .process import import_asset
@@ -26,27 +25,29 @@ class Service(BaseService):
         db.query(
             "SELECT id, title, settings FROM actions WHERE service_type = 'import'"
         )
+
         for id, title, settings in db.fetchall():
             action_settings = xml(settings)
+            import_storage: int | None
 
             try:
-                import_storage = int(action_settings.find("id_storage").text)  # type: ignore
+                import_storage = int(action_settings.find("id_storage").text)
             except (AttributeError, ValueError):
-                import_storage = nebula.settings.system.upload_storage  # type: ignore
+                import_storage = nebula.settings.system.upload_storage
 
             try:
-                import_dir = action_settings.find("import_dir").text  # type: ignore
+                import_dir = action_settings.find("import_dir").text
             except AttributeError:
                 import_dir = nebula.settings.system.upload_dir
 
             try:
-                identifier = action_settings.find("identifier").text  # type: ignore
+                identifier = action_settings.find("identifier").text
                 assert identifier
             except (AttributeError, AssertionError):
                 identifier = "id"
 
             try:
-                profile = action_settings.find("profile").text  # type: ignore
+                profile = action_settings.find("profile").text
                 assert profile
             except (AttributeError, AssertionError):
                 profile = "xdcamhd422-1080i50"
@@ -168,7 +169,7 @@ class Service(BaseService):
             nebula.storages[asset["id_storage"]].local_path,
             ".nx",
             "versions",
-            f"{int(asset.id/1000):04d}",
+            f"{int(asset.id / 1000):04d}",
             f"{asset.id:d}",
         )
 

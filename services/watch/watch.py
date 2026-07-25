@@ -1,8 +1,7 @@
 import os
 import time
-from typing import TYPE_CHECKING, Generator
-
-from nxtools import FileObject, get_base_name, get_files
+from collections.abc import Generator
+from typing import TYPE_CHECKING
 
 import nebula
 from nebula.base_service import BaseService
@@ -11,6 +10,7 @@ from nebula.enum import MediaType, ObjectStatus
 from nebula.filetypes import FileTypes
 from nebula.helpers import asset_by_path
 from nebula.objects import Asset
+from nxtools import FileObject, get_base_name, get_files
 
 if TYPE_CHECKING:
     from xml.etree.ElementTree import Element

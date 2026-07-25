@@ -3,7 +3,8 @@
 __all__ = ["OSCMessage"]
 
 
-from typing import Any, Iterator, List
+from collections.abc import Iterator
+from typing import Any
 
 from .osc_types import (
     OSCParseError,
@@ -109,7 +110,7 @@ class OSCMessage:
         return self._dgram
 
     @property
-    def params(self) -> List[Any]:
+    def params(self) -> list[Any]:
         """Convenience method for list(self) to get the list of parameters."""
         return list(self)
 

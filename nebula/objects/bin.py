@@ -1,9 +1,8 @@
 from typing import TYPE_CHECKING, Optional
 
-from nxtools import s2tc
-
 from nebula.log import log
 from nebula.objects.base import BaseObject, object_helper
+from nxtools import s2tc
 
 if TYPE_CHECKING:
     from nebula.objects.event import Event
@@ -57,7 +56,7 @@ class Bin(BaseObject):
     @property
     def event(self) -> Optional["Event"]:
         if not hasattr(self, "_event"):
-            self._event: Optional["Event"]
+            self._event: Event | None
             self.db.query(
                 """
                 SELECT meta FROM events

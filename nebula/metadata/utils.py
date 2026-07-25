@@ -1,12 +1,11 @@
 import re
 from collections import defaultdict
 from functools import lru_cache
-from typing import Any, DefaultDict
-
-from nxtools import unaccent
+from typing import Any
 
 from nebula.settings import settings
 from nebula.settings.common import LanguageCode
+from nxtools import unaccent
 
 
 @lru_cache(maxsize=512)
@@ -94,9 +93,9 @@ def make_cs_tree(
     if order == "value":
         items.sort(key=lambda x: x["value"])  # type: ignore
     elif order in ["title", "alias"]:
-        items.sort(key=lambda x: unaccent(x["title"]))  # type: ignore
+        items.sort(key=lambda x: unaccent(x["title"]))
 
-    parents: DefaultDict[str, list[Any]] = defaultdict(list[Any])
+    parents: defaultdict[str, list[Any]] = defaultdict(list[Any])
 
     for item in items:
         path = item["value"].split(".")  # type: ignore
