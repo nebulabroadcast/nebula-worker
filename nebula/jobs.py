@@ -517,7 +517,7 @@ def get_job(id_service: int, action_ids: list[int], db: DB | None = None) -> Job
             log.warning(f"Unable to get job. No such action ID {id_action}")
             continue
 
-        if status != 5 and action.should_skip(asset):
+        if status != JobState.RESTART.value and action.should_skip(asset):
             log.info(f"Skipping {job}")
             db.query(
                 """
@@ -540,7 +540,15 @@ def get_job(id_service: int, action_ids: list[int], db: DB | None = None) -> Job
                 log.warning(f"Unable to take {job}")
                 continue
         else:
-            db.query("UPDATE jobs SET message='Waiting' WHERE id=%s", [id_job])
+            db.query(
+                """
+                UPDATE jobs SET 
+                    message='Starting',
+                    status=1,
+                    progress=0
+                    start_time=%s,
+                WHERE id=%s
+                """, [id_job, now])
             messaging.send(
                 "job_progress",
                 id=id_job,
@@ -548,7 +556,7 @@ def get_job(id_service: int, action_ids: list[int], db: DB | None = None) -> Job
                 id_action=id_action,
                 status=status,
                 progress=0,
-                message="Waiting",
+                message="Starting",
             )
             db.commit()
     return None
