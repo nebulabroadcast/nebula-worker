@@ -20,7 +20,7 @@ Positioning uses numeric keypad layout (1-9):
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 
 class Position(IntEnum):
@@ -54,7 +54,7 @@ class Position(IntEnum):
     TR = 9
 
 
-PositionType = Union[Position, int, str]
+PositionType = Position | int | str
 
 
 def parse_position(pos: PositionType) -> Position:
@@ -64,10 +64,10 @@ def parse_position(pos: PositionType) -> Position:
     if isinstance(pos, int):
         try:
             return Position(pos)
-        except ValueError:
+        except ValueError as e:
             raise ValueError(
                 f"Invalid position integer: {pos}. Must be a numpad position (1-9)."
-            )
+            ) from e
     if isinstance(pos, str):
         cleaned = pos.strip().upper().replace("-", "_").replace(" ", "_")
         if cleaned.isdigit():
@@ -98,7 +98,8 @@ def escape_ffmpeg_text(text: str) -> str:
     """Escape special characters for ffmpeg drawtext filter text parameter."""
     if not text:
         return ""
-    # In FFmpeg filter graph strings, backslashes, single quotes, colons, and % must be escaped
+    # In FFmpeg filter graph strings, backslashes,
+    # single quotes, colons, and % must be escaped
     text = text.replace("\\", "\\\\")
     text = text.replace("'", "\\'")
     text = text.replace(":", "\\:")
@@ -137,8 +138,7 @@ class OverlayElement:
 
 
 class _ClassOrInstanceMethod:
-    """Descriptor allowing a method to be called on class (instantiating default Overlay)
-
+    """Descriptor allowing a method to be called on class
     or on an existing Overlay instance.
     """
 
@@ -178,7 +178,7 @@ class Overlay:
         box_color: str = "black@0.5",
         box_border_w: int = 0,
         line_spacing: int = 6,
-    ):
+    ) -> None:
         if isinstance(safe_area, tuple):
             self.safe_area_x, self.safe_area_y = safe_area
         else:
@@ -403,7 +403,8 @@ class Overlay:
         return self
 
     def render_list(self) -> list[str]:
-        """Render all configured overlay elements into a list of FFmpeg filter strings."""
+        """Render all configured overlay elements into a
+        list of FFmpeg filter strings."""
         if not self.elements:
             return []
 

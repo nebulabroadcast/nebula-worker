@@ -26,9 +26,7 @@ class NebulaFFMPEG(BaseEncoder):
         self.ffparams.extend(["-i", self.asset.file_path])
         asset = self.asset
         params = self.params
-        assert asset
-        assert params is not None
-        assert Overlay
+        _ = asset, params, Overlay
         self.error_log = ""
 
         for p in self.task:
