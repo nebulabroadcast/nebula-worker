@@ -1,22 +1,40 @@
 import json
 import time
+from inspect import cleandoc
 from typing import Any
+from xml.etree.ElementTree import Element
+from xml.etree.ElementTree import fromstring as parse_xml
 
 from nebula.db import DB
 from nebula.enum import ContentType, JobState, MediaType, ObjectStatus
 from nebula.log import log
 from nebula.messaging import messaging
 from nebula.objects import Asset
-from nxtools import xml
-
-_ = ObjectStatus, ContentType, MediaType, JobState
-
 
 MAX_RETRIES = 3
 
+DEFAULT_EXEC_CONTEXT = {
+    "ContentType": ContentType,
+    "MediaType": MediaType,
+    "ObjectStatus": ObjectStatus,
+}
+
+
+def proc_cond(cond: str | None) -> str | None:
+    if not cond:
+        return None
+    cond = cleandoc(cond.strip())
+    if not cond:
+        return None
+    return cond
+
 
 class Action:
-    def __init__(self, id_action, title, settings):
+    start_if: str | None = None
+    create_if: str | None = None
+    skip_if: str | None = None
+
+    def __init__(self, id_action: int, title: str, settings: Element):
         self.id = id_action
         self.title = title
         self.settings = settings
@@ -25,68 +43,68 @@ class Action:
         except IndexError:
             self.create_if = None
         else:
-            if create_if is not None:
-                if create_if.text:
-                    self.create_if = create_if.text
-                else:
-                    self.create_if = None
+            self.create_if = proc_cond(create_if.text)
 
         try:
             start_if = settings.findall("start_if")[0]
         except IndexError:
             self.start_if = None
         else:
-            if start_if is not None:
-                if start_if.text:
-                    self.start_if = start_if.text
-                else:
-                    self.start_if = None
+            self.start_if = proc_cond(start_if.text)
 
         try:
             skip_if = settings.findall("skip_if")[0]
         except IndexError:
             self.skip_if = None
         else:
-            if skip_if is not None:
-                if skip_if.text:
-                    self.skip_if = skip_if.text
-                else:
-                    self.skip_if = None
+            self.skip_if = proc_cond(skip_if.text)
 
     @property
-    def created_key(self):
+    def created_key(self) -> str:
         return f"job_created/{self.id}"
 
-    def should_create(self, asset: Asset):
-        _ = asset
-        if self.create_if:
-            return eval(self.create_if)
-        return False
+    def should_create(self, asset: Asset) -> bool:
+        if not self.create_if:
+            return False
+        safe_globals = {"asset": asset, **DEFAULT_EXEC_CONTEXT}
+        try:
+            return eval(self.create_if, {"__builtins__": None}, safe_globals)
+        except Exception as e:
+            log.error(f"Error evaluating create_if for action {self.id}: {e}")
+            return False
 
-    def should_start(self, asset: Asset):
-        _ = asset
-        if self.start_if:
-            return eval(self.start_if)
-        return True
+    def should_start(self, asset: Asset) -> bool:
+        if not self.start_if:
+            return False
+        safe_globals = {"asset": asset, **DEFAULT_EXEC_CONTEXT}
+        try:
+            return eval(self.start_if, {"__builtins__": None}, safe_globals)
+        except Exception as e:
+            log.error(f"Error evaluating start_if for action {self.id}: {e}")
+            return False
 
-    def should_skip(self, asset: Asset):
-        _ = asset
-        if self.skip_if:
-            return eval(self.skip_if)
-        return False
+    def should_skip(self, asset: Asset) -> bool:
+        if not self.skip_if:
+            return False
+        safe_globals = {"asset": asset, **DEFAULT_EXEC_CONTEXT}
+        try:
+            return eval(self.skip_if, {"__builtins__": None}, safe_globals)
+        except Exception as e:
+            log.error(f"Error evaluating skip_if for action {self.id}: {e}")
+            return False
 
 
 class Actions:
-    def __init__(self):
+    def __init__(self) -> None:
         self.data = {}
 
-    def load(self, id_action: int):
+    def load(self, id_action: int) -> None:
         db = DB()
         db.query("SELECT title, settings FROM actions WHERE id = %s", [id_action])
         for title, settings in db.fetchall():
-            self.data[id_action] = Action(id_action, title, xml(settings))
+            self.data[id_action] = Action(id_action, title, parse_xml(settings))
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: int) -> Action:
         if key not in self.data:
             self.load(key)
         return self.data.get(key, False)
