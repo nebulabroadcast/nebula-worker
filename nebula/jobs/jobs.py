@@ -1,116 +1,15 @@
-import json
 import time
-from inspect import cleandoc
 from typing import Any
-from xml.etree.ElementTree import Element
-from xml.etree.ElementTree import fromstring as parse_xml
 
 from nebula.db import DB
-from nebula.enum import ContentType, JobState, MediaType, ObjectStatus
+from nebula.enum import JobState
 from nebula.log import log
 from nebula.messaging import messaging
 from nebula.objects import Asset
 
+from .actions import Action, actions
+
 MAX_RETRIES = 3
-
-DEFAULT_EXEC_CONTEXT = {
-    "ContentType": ContentType,
-    "MediaType": MediaType,
-    "ObjectStatus": ObjectStatus,
-}
-
-
-def proc_cond(cond: str | None) -> str | None:
-    if not cond:
-        return None
-    cond = cleandoc(cond.strip())
-    if not cond:
-        return None
-    return cond
-
-
-class Action:
-    start_if: str | None = None
-    create_if: str | None = None
-    skip_if: str | None = None
-
-    def __init__(self, id_action: int, title: str, settings: Element):
-        self.id = id_action
-        self.title = title
-        self.settings = settings
-        try:
-            create_if = settings.findall("create_if")[0]
-        except IndexError:
-            self.create_if = None
-        else:
-            self.create_if = proc_cond(create_if.text)
-
-        try:
-            start_if = settings.findall("start_if")[0]
-        except IndexError:
-            self.start_if = None
-        else:
-            self.start_if = proc_cond(start_if.text)
-
-        try:
-            skip_if = settings.findall("skip_if")[0]
-        except IndexError:
-            self.skip_if = None
-        else:
-            self.skip_if = proc_cond(skip_if.text)
-
-    @property
-    def created_key(self) -> str:
-        return f"job_created/{self.id}"
-
-    def should_create(self, asset: Asset) -> bool:
-        if not self.create_if:
-            return False
-        safe_globals = {"asset": asset, **DEFAULT_EXEC_CONTEXT}
-        try:
-            return eval(self.create_if, {"__builtins__": None}, safe_globals)
-        except Exception as e:
-            log.error(f"Error evaluating create_if for action {self.id}: {e}")
-            return False
-
-    def should_start(self, asset: Asset) -> bool:
-        if not self.start_if:
-            return False
-        safe_globals = {"asset": asset, **DEFAULT_EXEC_CONTEXT}
-        try:
-            return eval(self.start_if, {"__builtins__": None}, safe_globals)
-        except Exception as e:
-            log.error(f"Error evaluating start_if for action {self.id}: {e}")
-            return False
-
-    def should_skip(self, asset: Asset) -> bool:
-        if not self.skip_if:
-            return False
-        safe_globals = {"asset": asset, **DEFAULT_EXEC_CONTEXT}
-        try:
-            return eval(self.skip_if, {"__builtins__": None}, safe_globals)
-        except Exception as e:
-            log.error(f"Error evaluating skip_if for action {self.id}: {e}")
-            return False
-
-
-class Actions:
-    def __init__(self) -> None:
-        self.data = {}
-
-    def load(self, id_action: int) -> None:
-        db = DB()
-        db.query("SELECT title, settings FROM actions WHERE id = %s", [id_action])
-        for title, settings in db.fetchall():
-            self.data[id_action] = Action(id_action, title, parse_xml(settings))
-
-    def __getitem__(self, key: int) -> Action:
-        if key not in self.data:
-            self.load(key)
-        return self.data.get(key, False)
-
-
-actions = Actions()
 
 
 class Job:
@@ -125,7 +24,12 @@ class Job:
     retries: int = 0
     status: JobState = JobState.PENDING
 
-    def __init__(self, id: int, db: DB | None = None):
+    def __init__(
+        self,
+        id: int,
+        *,
+        db: DB | None = None,
+    ):
         self._db = db
         self.id = id
         self.id_service = None
@@ -216,7 +120,17 @@ class Job:
             return
         log.error(f"No such {self}")
 
-    def take(self, id_service):
+    def take(self, id_service: int) -> bool:
+        """Take job for processing by service with id_service.
+
+        This method updates the job's status to "in progress" and assigns it
+        to the specified service. Returns True if job was successfully taken
+        by service, False otherwise.
+
+        Service should not continue processing the job if this method returns False,
+        as it means another service has already taken the job.
+        """
+
         now = time.time()
         self.db.query(
             """
@@ -232,7 +146,8 @@ class Job:
         )
         self.db.commit()
         self.db.query(
-            "SELECT id FROM jobs WHERE id=%s AND id_service=%s", [self.id, id_service]
+            "SELECT id FROM jobs WHERE id=%s AND id_service=%s",
+            [self.id, id_service],
         )
         if self.db.fetchall():
             messaging.send(
@@ -248,9 +163,13 @@ class Job:
             return True
         return False
 
-    def set_progress(self, progress, message="In progress"):
+    def set_progress(self, progress: float, message: str | None = None) -> None:
         db = DB()
         progress = round(progress, 2)
+
+        if message is None:
+            message = "Job in progress"
+
         db.query(
             """
             UPDATE jobs SET
@@ -272,18 +191,20 @@ class Job:
             message=message,
         )
 
-    def get_status(self):
+    def get_status(self) -> JobState:
         self.db.query("SELECT status FROM jobs WHERE id=%s", [self.id])
         try:
             self.status = self.db.fetchall()[0][0]
         except IndexError:
             log.error(f"No such {self}")
-            return 0
-        return self.status
+            return JobState.PENDING
+        return JobState(self.status)
 
-    def abort(self, message="Aborted"):
+    def abort(self, message: str | None = None) -> None:
         now = time.time()
-        log.warning(f"{self} aborted")
+        if message is None:
+            message = "Aborted"
+        log.warning(f"{self}: {message}")
         self.db.query(
             """
             UPDATE jobs SET
@@ -308,8 +229,10 @@ class Job:
             message=message,
         )
 
-    def restart(self, message="Restarted"):
-        log.warning(f"{self} restarted")
+    def restart(self, message: str | None = None) -> None:
+        if message is None:
+            message = "Restart requested"
+        log.warning(f"{self}: {message}")
         self.db.query(
             """
             UPDATE jobs SET
@@ -338,7 +261,9 @@ class Job:
             message=message,
         )
 
-    def fail(self, message="Failed", critical=False):
+    def fail(self, message: str | None = None, *, critical: bool = False) -> None:
+        if message is None:
+            message = "Failed"
         if critical:
             retries = MAX_RETRIES
         else:
@@ -369,9 +294,12 @@ class Job:
             message=message,
         )
 
-    def done(self, message="Completed"):
+    def done(self, message: str | None = None) -> None:
         assert self.action
         now = time.time()
+        if message is None:
+            message = "Completed"
+        log.success(f"{self}: {message}")
         self.db.query(
             """
             UPDATE jobs SET
@@ -385,7 +313,6 @@ class Job:
         )
         self.db.commit()
         self.status = JobState.COMPLETED
-        log.success(f"{self}: {message}")
         messaging.send(
             "job_progress",
             id=self.id,
@@ -398,7 +325,12 @@ class Job:
         )
 
 
-def get_job(id_service: int, action_ids: list[int], db: DB | None = None) -> Job | None:
+def get_job(
+    id_service: int,
+    action_ids: list[int],
+    *,
+    db: DB | None = None,
+) -> Job | None:
     assert isinstance(action_ids, list), "action_ids must be list of integers"
     if not action_ids:
         return None
@@ -490,12 +422,13 @@ def get_job(id_service: int, action_ids: list[int], db: DB | None = None) -> Job
 
         run_on_services: list[int] = []
         for run_on_tag in action.settings.findall("run_on"):
+            run_on_text = (run_on_tag.text or "").strip()
+            if not run_on_text:
+                continue
             try:
-                value = [int(r.strip()) for r in run_on_tag.text.split(",")]
+                value = [int(r.strip()) for r in run_on_text.split(",") if r.isdigit()]
             except ValueError:
-                log.error(
-                    f"Invalid run_on value for action {action}: {run_on_tag.text}"
-                )
+                log.error(f"Invalid run_on value for action {action}: {run_on_text}")
                 continue
             run_on_services.extend(value)
 
@@ -542,13 +475,15 @@ def get_job(id_service: int, action_ids: list[int], db: DB | None = None) -> Job
         else:
             db.query(
                 """
-                UPDATE jobs SET 
+                UPDATE jobs SET
                     message='Starting',
                     status=1,
                     progress=0
                     start_time=%s,
                 WHERE id=%s
-                """, [id_job, now])
+                """,
+                [id_job, now],
+            )
             messaging.send(
                 "job_progress",
                 id=id_job,
@@ -560,127 +495,3 @@ def get_job(id_service: int, action_ids: list[int], db: DB | None = None) -> Job
             )
             db.commit()
     return None
-
-
-def send_to(
-    id_asset: int,
-    id_action: int,
-    id_service: int | None = None,
-    settings: dict[str, Any] | None = None,
-    id_user: int | None = None,
-    priority: int = 3,
-    restart_existing: bool = True,
-    restart_running: bool = False,
-    db: DB | None = None,
-) -> int:
-    if db is None:
-        db = DB()
-
-    assert id_asset, "You must specify an existing object"
-
-    if settings is None:
-        settings = {}
-
-    db.query(
-        """
-        SELECT id
-        FROM jobs
-        WHERE id_asset=%s AND id_action=%s AND settings=%s
-        """,
-        [id_asset, id_action, json.dumps(settings)],
-    )
-    res = db.fetchall()
-    if res:
-        if restart_existing:
-            conds = "0,5"
-            if not restart_running:
-                conds += ",1"
-
-            db.query(
-                f"""
-                UPDATE jobs SET
-                    id_user=%s,
-                    id_service=%s,
-                    message='Restart requested',
-                    status=5,
-                    retries=0,
-                    creation_time=%s,
-                    start_time=NULL,
-                    end_time=NULL
-                WHERE id=%s
-                    AND status NOT IN ({conds})
-                RETURNING id
-                """,
-                [id_user, id_service, time.time(), res[0][0]],
-            )
-            db.commit()
-            if db.fetchall():
-                messaging.send(
-                    "job_progress",
-                    id=res[0][0],
-                    id_asset=id_asset,
-                    id_action=id_action,
-                    progress=0,
-                )
-                log.trace(f"Restarted job {res[0][0]}")
-                return res[0][0]
-            log.trace(f"Job {res[0][0]} is running. Not restarting")
-            return res[0][0]
-
-        else:
-            log.trace(f"Job {res[0][0]} exists. Not restarting")
-            return res[0][0]
-
-    #
-    # Create a new job
-    #
-
-    db.query(
-        """INSERT INTO jobs (
-            id_asset,
-            id_action,
-            id_user,
-            id_service,
-            settings,
-            priority,
-            message,
-            creation_time
-        ) VALUES (
-            %s,
-            %s,
-            %s,
-            %s,
-            %s,
-            %s,
-            'Pending',
-            %s
-        )
-        RETURNING id
-        """,
-        [
-            id_asset,
-            id_action,
-            id_user,
-            id_service,
-            json.dumps(settings),
-            priority,
-            time.time(),
-        ],
-    )
-
-    try:
-        id_job = db.fetchall()[0][0]
-        db.commit()
-    except Exception as e:
-        log.traceback()
-        raise Exception("Unable to create job") from e
-
-    messaging.send(
-        "job_progress",
-        id=id_job,
-        id_asset=id_asset,
-        id_action=id_action,
-        progress=0,
-        message="Job created",
-    )
-    return id_job
