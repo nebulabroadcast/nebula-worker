@@ -12,6 +12,7 @@ __all__ = [
 
 
 import string
+from typing import Literal, overload
 
 import unidecode
 
@@ -23,8 +24,8 @@ GUID_REGEXP = (
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 )
 
-default_slug_whitelist = string.ascii_letters + string.digits
-slug_separator_whitelist = " ,./\\;:!|*^#@~+-_="
+SLUG_WHITELIST = string.ascii_letters + string.digits
+SLUG_SEPARATORS = " ,./\\;:!|*^#@~+-_="
 
 
 def indent(src, length: int = 4):
@@ -46,15 +47,42 @@ def unaccent(string: str) -> str:
     return unidecode.unidecode(string)
 
 
+@overload
 def slugify(
     input_string: str,
+    *,
+    separator: str = "-",
+    lower: bool = True,
+    make_set: Literal[False] = False,
+    min_length: int = 1,
+    slug_whitelist: str = SLUG_WHITELIST,
+    split_chars: str = SLUG_SEPARATORS,
+) -> str: ...
+
+
+@overload
+def slugify(
+    input_string: str,
+    *,
+    separator: str = "-",
+    lower: bool = True,
+    make_set: Literal[True] = True,
+    min_length: int = 1,
+    slug_whitelist: str = SLUG_WHITELIST,
+    split_chars: str = SLUG_SEPARATORS,
+) -> set[str]: ...
+
+
+def slugify(  # noqa: PLR0913
+    input_string: str,
+    *,
     separator: str = "-",
     lower: bool = True,
     make_set: bool = False,
     min_length: int = 1,
-    slug_whitelist: str = default_slug_whitelist,
-    split_chars: str = slug_separator_whitelist,
-) -> str:
+    slug_whitelist: str = SLUG_WHITELIST,
+    split_chars: str = SLUG_SEPARATORS,
+) -> str | set[str]:
     """Slugify a text string
 
     This function removes transliterates input string to ASCII,

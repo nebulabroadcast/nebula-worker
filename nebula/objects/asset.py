@@ -5,6 +5,7 @@ from nebula.enum import ContentType, MediaType
 from nebula.objects.base import BaseObject, object_helper
 from nebula.settings import settings
 from nebula.storages import storages
+from nxtools import slugify
 
 
 class Asset(BaseObject):
@@ -76,6 +77,27 @@ class Asset(BaseObject):
             new_val = max(new_val, 0)
             self["mark_out"] = new_val
         return self.get("mark_out", 0)
+
+    @property
+    def slug(self) -> str | None:
+        """Return slug of the asset.
+        Slug is a title and subtitle converted to a slug.
+        In case of virtual assets, returns None.
+        """
+        return slugify(f"{self['title']} {self['subtitle']}")
+
+    @property
+    def title(self) -> str:
+        """Return display title.
+
+        Display title is a title with optional subtitle.
+        """
+        if not (title := self.get("title")):
+            title = f"Asset {self.id}" if self.id else "New asset"
+
+        if subtitle := self.get("subtitle"):
+            return f"{title}: {subtitle}"
+        return str(title)
 
     @property
     def duration(self):

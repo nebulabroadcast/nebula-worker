@@ -142,10 +142,10 @@ class _ClassOrInstanceMethod:
     or on an existing Overlay instance.
     """
 
-    def __init__(self, func: Callable):
+    def __init__(self, func: Callable) -> None:  # type: ignore[type-arg]
         self.func = func
 
-    def __get__(self, instance: Any, owner: Any) -> Callable:
+    def __get__(self, instance: Any, owner: Any) -> Callable:  # type: ignore[type-arg]
         if instance is None:
 
             def class_wrapper(*args, **kwargs):

@@ -35,8 +35,14 @@ def datestr2ts(datestr: str, hh: int = 0, mm: int = 0, ss: int = 0) -> int:
             Parsed unix timestamp
     """
     yy, mo, dd = [int(i) for i in datestr.split("-")]
-    ttuple = [yy, mo, dd, hh, mm]
-    dt = datetime.datetime(*ttuple)
+    dt = datetime.datetime(
+        year=yy,
+        month=mo,
+        day=dd,
+        hour=hh,
+        minute=mm,
+        second=ss,
+    )
     tstamp = int(time.mktime(dt.timetuple()))
     return tstamp
 
@@ -57,7 +63,8 @@ def tc2s(tc: str, base: float = 25) -> float:
     """
     tc = tc.replace(";", ":")
     hh, mm, ss, ff = [int(e) for e in tc.split(":")]
-    res = hh * 3600
+
+    res: float = hh * 3600
     res += mm * 60
     res += ss
     res += ff / float(base)
