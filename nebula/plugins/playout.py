@@ -1,7 +1,7 @@
 import os
 import threading
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field
 
@@ -36,11 +36,12 @@ class PlayoutPluginManifest(BaseModel):
 
 
 class PlayoutPlugin:
-    name: str
-    title: str | None = None
+    name: ClassVar[str]
+    title: ClassVar[str | None] = None
+    slots: ClassVar[list[PlayoutPluginSlot]] = []
+    tasks: ClassVar[list[Callable]] = []
+
     id_layer: int = 0
-    slots: list[PlayoutPluginSlot] = []
-    tasks: list[Callable] = []
     busy: bool = False
 
     def __init__(self, service: "PlayService"):

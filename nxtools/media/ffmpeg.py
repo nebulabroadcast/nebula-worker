@@ -3,6 +3,7 @@ __all__ = ["FFMPEG", "ffmpeg"]
 import re
 import signal
 import subprocess
+from collections.abc import Callable
 from typing import IO
 
 from nxtools.logging import logging
@@ -67,7 +68,7 @@ class FFMPEG:
     ):
         self.reset_stderr()
         logging.debug("Executing", " ".join(self.cmd))
-        self.proc = subprocess.Popen(
+        self.proc = subprocess.Popen(  # type: ignore[assignment]
             self.cmd,
             stdin=stdin,
             stdout=stdout,
@@ -88,6 +89,8 @@ class FFMPEG:
         except KeyboardInterrupt:
             self.stop()
             interrupted = True
+        if not self.proc:
+            return
         self.proc.wait()
         self.error_log += self.stderr.read().decode("utf-8")
         if interrupted:
@@ -121,11 +124,10 @@ class FFMPEG:
 
 def ffmpeg(
     *args,
-    progress_handler=None,
-    stdin=subprocess.PIPE,
-    stdout=None,
-    stderr=subprocess.PIPE,
-    debug=False,
+    progress_handler: Callable[[float], None] | None = None,
+    stdin: IO[bytes] | int | None = subprocess.PIPE,
+    stdout: IO[bytes] | int | None = None,
+    stderr: IO[bytes] | int | None = subprocess.PIPE,
 ):
     """
     FFMpeg wrapper with progress and error handling
@@ -157,7 +159,7 @@ def ffmpeg(
         boolean: indicate if the process was successful
     """
 
-    ff = FFMPEG(*args, debug=debug)
+    ff = FFMPEG(*args)
     ff.start(
         stdin=stdin,
         stdout=stdout,
