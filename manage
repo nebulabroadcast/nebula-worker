@@ -5,9 +5,8 @@ import socket
 import sys
 import time
 
-from nxtools import xml
-
 import nebula
+from nxtools import xml
 
 orig_dir = os.getcwd()
 if orig_dir != "/opt/nebula":

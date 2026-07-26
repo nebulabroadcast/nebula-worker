@@ -4,7 +4,7 @@ Nebula worker
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/nebulabroadcast/nebula-worker?style=for-the-badge)
 ![Maintenance](https://img.shields.io/maintenance/yes/2026?style=for-the-badge)
 ![Last commit](https://img.shields.io/github/last-commit/nebulabroadcast/nebula-worker?style=for-the-badge)
-![Python version](https://img.shields.io/badge/python-3.12-blue?style=for-the-badge)
+![Python version](https://img.shields.io/badge/python-3.13-blue?style=for-the-badge)
 
 This repository contains the code for [Nebula 6](https://github.com/nebulabroadcast/nebula) worker node.
 The worker node is responsible for processing media files, handling metadata, 
@@ -55,11 +55,11 @@ worker:
 
 ### Bare metal
 
-Nebula is developed and tested on Debian Buster. Other distributions may work.
+Nebula is developed and tested on Debian Trixie. Other distributions may work.
 
 Software requirements:
 
- - Python 3.12 (3.13 won't work)
+ - Python 3.13
  - FFMpeg
  - cifs-utils (for mounting SMB shares)
  - mediainfo (used by import service)
@@ -69,8 +69,8 @@ Installation:
 
 1. Install the required software
 2. Clone this repository to `/opt/nebula`
-3. Install dependencies with `poetry install`
-4. Run the worker with `poetry run python -m dispatch`
+3. Install dependencies with `uv sync`
+4. Run the worker with `uv run python -m dispatch`
 
 Nebula worker must run as root to mount external storages.
 

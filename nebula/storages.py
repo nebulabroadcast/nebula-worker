@@ -1,6 +1,7 @@
 import os
 import posixpath
 import socket
+from collections.abc import Generator
 from typing import Any
 
 from nebula.config import config
@@ -109,7 +110,7 @@ class Storages:
 
         return Storage(storage_config)
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[Storage]:
         for storage_config in settings.storages:
             yield Storage(storage_config)
 
