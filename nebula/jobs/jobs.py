@@ -478,7 +478,7 @@ def get_job(
                 UPDATE jobs SET
                     message='Starting',
                     status=1,
-                    progress=0
+                    progress=0,
                     start_time=%s,
                 WHERE id=%s
                 """,
