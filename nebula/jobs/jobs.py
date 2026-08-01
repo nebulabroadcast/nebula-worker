@@ -479,7 +479,7 @@ def get_job(
                     message='Starting',
                     status=1,
                     progress=0,
-                    start_time=%s,
+                    start_time=%s
                 WHERE id=%s
                 """,
                 [id_job, now],

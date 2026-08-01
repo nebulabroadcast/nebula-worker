@@ -18,6 +18,19 @@ def time2sec(search):
     return int(hh) * 3600 + int(mm) * 60 + int(ss) + int(cs) / 100.0
 
 
+class FilterChain:
+    filters: list[str | Overlay]
+
+    def __init__(self, *filters: str | Overlay) -> None:
+        self.filters = list(filters)
+
+    def render(self) -> str:
+        return ",".join([f"{f}" for f in self.filters])
+
+    def __str__(self) -> str:
+        return self.render()
+
+
 class NebulaFFMPEG(BaseEncoder):
     def configure(self) -> None:
         self.proc = None
@@ -62,7 +75,14 @@ class NebulaFFMPEG(BaseEncoder):
                 if not storage.is_writable:
                     raise ConversionError("Target storage is not writable")
 
+                if not p.text:
+                    raise ConversionError("Output path is not specified")
+
                 target_rel_path = eval(p.text)
+
+                if not target_rel_path:
+                    raise ConversionError("Output path is empty")
+
                 target_path = os.path.join(
                     storages[id_storage].local_path, target_rel_path
                 )
@@ -128,7 +148,7 @@ class NebulaFFMPEG(BaseEncoder):
                 if position_match:
                     position = time2sec(position_match)
                     if not duration:
-                        progress_handler(None)
+                        progress_handler(0)
                     else:
                         progress = (position / duration) * 100
                         progress_handler(progress)
