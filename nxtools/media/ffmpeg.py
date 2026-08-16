@@ -1,62 +1,56 @@
-__all__ = ["FFMPEG", "ffmpeg", "enable_ffmpeg_debug"]
+__all__ = ["FFMPEG", "ffmpeg"]
 
 import re
 import signal
 import subprocess
-import sys
+from collections.abc import Callable
+from typing import IO
 
 from nxtools.logging import logging
 from nxtools.text import indent
 
-FFMPEG_DEBUG = False
-
 re_position = re.compile(r"time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})\d*", re.U | re.I)
 
 
-def enable_ffmpeg_debug():
-    global FFMPEG_DEBUG
-    FFMPEG_DEBUG = True
-
-
-def time2sec(search):
+def time2sec(search: re.Match[str]) -> float:
     hh, mm, ss, cs = search.group(1), search.group(2), search.group(3), search.group(4)
     return int(hh) * 3600 + int(mm) * 60 + int(ss) + int(cs) / 100.0
 
 
 class FFMPEG:
-    def __init__(self, *args, **kwargs):
-        if kwargs.get("debug", False):
-            enable_ffmpeg_debug()
-        if FFMPEG_DEBUG:
-            logging.warning("FFMPEG debug mode is enabled")
-
+    def __init__(self, *args) -> None:
         self.proc = None
         self.cmd = ["ffmpeg", "-hide_banner"]
         self.cmd.extend(str(arg) for arg in args)
 
-    def reset_stderr(self):
+    def reset_stderr(self) -> None:
         self.buff = b""
         self.error_log = ""
 
     @property
-    def is_running(self):
-        return bool(self.proc) and self.proc.poll() is None
+    def is_running(self) -> bool:
+        if not self.proc:
+            return False
+        if self.proc.poll() is not None:
+            self.proc = None
+            return False
+        return True
 
     @property
-    def stdin(self):
-        if self.proc is None:
+    def stdin(self) -> IO[bytes]:
+        if self.proc is None or self.proc.stdin is None:
             raise RuntimeError("FFMPEG process is not running")
         return self.proc.stdin
 
     @property
-    def stdout(self):
-        if self.proc is None:
+    def stdout(self) -> IO[bytes]:
+        if self.proc is None or self.proc.stdout is None:
             raise RuntimeError("FFMPEG process is not running")
         return self.proc.stdout
 
     @property
-    def stderr(self):
-        if self.proc is None:
+    def stderr(self) -> IO[bytes]:
+        if self.proc is None or self.proc.stderr is None:
             raise RuntimeError("FFMPEG process is not running")
         return self.proc.stderr
 
@@ -66,10 +60,15 @@ class FFMPEG:
             return None
         return self.proc.returncode
 
-    def start(self, stdin=None, stdout=None, stderr=subprocess.PIPE):
+    def start(
+        self,
+        stdin: IO[bytes] | int | None = None,
+        stdout: IO[bytes] | int | None = None,
+        stderr: IO[bytes] | int | None = subprocess.PIPE,
+    ):
         self.reset_stderr()
         logging.debug("Executing", " ".join(self.cmd))
-        self.proc = subprocess.Popen(
+        self.proc = subprocess.Popen(  # type: ignore[assignment]
             self.cmd,
             stdin=stdin,
             stdout=stdout,
@@ -90,13 +89,15 @@ class FFMPEG:
         except KeyboardInterrupt:
             self.stop()
             interrupted = True
+        if not self.proc:
+            return
         self.proc.wait()
         self.error_log += self.stderr.read().decode("utf-8")
         if interrupted:
             raise KeyboardInterrupt
 
     def process(self, progress_handler=None):
-        ch = self.proc.stderr.read(1)
+        ch = self.stderr.read(1)
         if not ch:
             return False
         if ch in [b"\n", b"\r"]:
@@ -115,9 +116,6 @@ class FFMPEG:
             else:
                 self.error_log += line + "\n"
 
-            if FFMPEG_DEBUG:
-                sys.stderr.write(line + "\n")
-
             self.buff = b""
         else:
             self.buff += ch
@@ -126,11 +124,10 @@ class FFMPEG:
 
 def ffmpeg(
     *args,
-    progress_handler=None,
-    stdin=subprocess.PIPE,
-    stdout=None,
-    stderr=subprocess.PIPE,
-    debug=False,
+    progress_handler: Callable[[float], None] | None = None,
+    stdin: IO[bytes] | int | None = subprocess.PIPE,
+    stdout: IO[bytes] | int | None = None,
+    stderr: IO[bytes] | int | None = subprocess.PIPE,
 ):
     """
     FFMpeg wrapper with progress and error handling
@@ -162,7 +159,7 @@ def ffmpeg(
         boolean: indicate if the process was successful
     """
 
-    ff = FFMPEG(*args, debug=debug)
+    ff = FFMPEG(*args)
     ff.start(
         stdin=stdin,
         stdout=stdout,

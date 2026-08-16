@@ -134,7 +134,7 @@ class NebulaMelt(BaseEncoder):
             return None
         self.proc.send_signal(signal.SIGINT)  # type: ignore
 
-    def wait(self, progress_handler: Callable) -> None:
+    def wait(self, progress_handler: Callable[[float], None]) -> None:
         buff = ""
         current_percent = 0
         assert self.proc

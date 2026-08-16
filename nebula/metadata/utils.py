@@ -1,7 +1,7 @@
 import re
 from collections import defaultdict
 from functools import lru_cache
-from typing import Any
+from typing import Any, cast
 
 from nebula.settings import settings
 from nebula.settings.common import LanguageCode
@@ -93,7 +93,7 @@ def make_cs_tree(
     if order == "value":
         items.sort(key=lambda x: x["value"])  # type: ignore
     elif order in ["title", "alias"]:
-        items.sort(key=lambda x: unaccent(x["title"]))
+        items.sort(key=lambda x: unaccent(cast(str, x["title"])))
 
     parents: defaultdict[str, list[Any]] = defaultdict(list[Any])
 
