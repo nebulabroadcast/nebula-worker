@@ -64,7 +64,7 @@ class Action:
 
     def should_start(self, asset: Asset) -> bool:
         if not self.start_if:
-            return False
+            return True
         safe_globals = {"asset": asset, **DEFAULT_EXEC_CONTEXT}
         try:
             return eval(self.start_if, {"__builtins__": None}, safe_globals)

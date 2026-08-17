@@ -482,7 +482,7 @@ def get_job(
                     start_time=%s
                 WHERE id=%s
                 """,
-                [id_job, now],
+                [now, id_job],
             )
             messaging.send(
                 "job_progress",
