@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 from nebula.db import DB
 from nebula.log import log
 from nebula.messaging import messaging
+from nebula.metadata.export import export_metadata
 from nebula.metadata.format import format_meta
 from nebula.metadata.normalize import normalize_meta
 from nebula.settings import settings
@@ -175,6 +176,20 @@ class BaseObject:
 
     def show(self, key, **kwargs):
         return format_meta(self, key, **kwargs)
+
+    def metadata(self, format: str | None = None) -> dict[str, str]:
+        """Return object metadata as a container tags dictionary.
+
+        Keys of the resulting dict are tag names understood by the
+        muxer of the given container format (mp4, mkv, mp3...),
+        values are human readable metadata values.
+
+        Tags the container does not support as well as empty values
+        are skipped, so the result may be passed to the muxer as is.
+        When no format is given, free-form tags are assumed
+        and everything known is returned.
+        """
+        return export_metadata(self.meta, format)
 
     def show_meta(self):
         return pprint.pformat(self.meta)
