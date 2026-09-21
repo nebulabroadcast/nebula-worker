@@ -90,11 +90,16 @@ class PlayoutStorageTool:
         STORAGE_STATUS[storage.id] = True
 
         for asset, scheduled in get_scheduled_assets(self.id_channel, db=db):
-            old_status = asset.get(self.status_key, DEFAULT_STATUS)
-
             if not asset.id:
                 nebula.log.error(f"Asset {asset} has no id")
                 continue
+
+            if asset.get_colocated_playout_path(self.id_channel):
+                # Asset already lives in the channel's playout dir.
+                # No transfer needed, nothing to track here.
+                continue
+
+            old_status = asset.get(self.status_key, DEFAULT_STATUS)
 
             full_playout_path = asset.get_playout_full_path(self.id_channel)
             if not full_playout_path:
