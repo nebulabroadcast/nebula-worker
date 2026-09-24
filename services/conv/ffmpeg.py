@@ -54,6 +54,30 @@ class NebulaFFMPEG(BaseEncoder):
                     if value:
                         self.ffparams.append(value)
 
+            elif p.tag == "metadata":
+                ptext = cleandoc(p.text.strip()) if p.text else ""
+                if not ptext:
+                    continue
+                try:
+                    tags = eval(ptext)
+                except Exception as e:
+                    nebula.log.traceback()
+                    raise ConversionError("Error in task 'metadata' element.") from e
+
+                if not isinstance(tags, dict):
+                    raise ConversionError("Metadata must evaluate to a dictionary")
+
+                # 'stream' attribute may be used to target a specific stream
+                # or a chapter, e.g. <metadata stream="s:a:0">
+
+                specifier = p.attrib.get("stream")
+                arg = f"-metadata:{specifier}" if specifier else "-metadata"
+
+                for key, value in tags.items():
+                    if value is None or value == "":
+                        continue
+                    self.ffparams.extend([arg, f"{key}={value}"])
+
             elif p.tag == "script":
                 if p.text:
                     try:
