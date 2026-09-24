@@ -180,6 +180,32 @@ class Asset(BaseObject):
             return None
         return os.path.join(storages[id_storage].local_path, playout_path)
 
+    def get_colocated_playout_path(self, id_channel: int) -> str | None:
+        """Return this asset's path relative to the channel's playout dir.
+
+        Some channels ("channel in a box") use the same storage for both
+        assets and playout media, with the asset path already living
+        under the channel's playout_dir - e.g. because it was imported
+        there directly instead of being copied there by a channel-specific
+        transfer job. In that case the asset can be cued directly, without
+        involving playout_status/{id_channel} tracking at all. Returns
+        None if the asset is not colocated with the channel's playout dir.
+        """
+        playout_config = settings.get_playout_channel(id_channel)
+        if playout_config is None:
+            return None
+        if not (playout_config.playout_storage and playout_config.playout_dir):
+            return None
+        if self["id_storage"] != playout_config.playout_storage:
+            return None
+        path = self["path"]
+        if not path:
+            return None
+        rel_path = os.path.relpath(path, playout_config.playout_dir)
+        if rel_path == os.curdir or rel_path.partition(os.sep)[0] == os.pardir:
+            return None
+        return rel_path
+
     #
     # Unused methods?
     #

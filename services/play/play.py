@@ -1,3 +1,4 @@
+import os
 import threading
 import time
 from http.server import HTTPServer
@@ -163,7 +164,18 @@ class Service(BaseService):
         playout_status = asset.get(self.status_key, DEFAULT_STATUS)["status"]
 
         kwargs["fname"] = kwargs["full_path"] = None
-        if playout_status in [
+
+        colocated_path = asset.get_colocated_playout_path(self.channel.id)
+        if colocated_path and asset["status"] in (
+            ObjectStatus.ONLINE,
+            ObjectStatus.CREATING,
+        ):
+            # Asset already lives in the channel's playout dir. Cue it
+            # directly - no playout_status/{id_channel} tracking involved.
+            kwargs["fname"] = os.path.splitext(colocated_path)[0]
+            kwargs["full_path"] = asset.file_path
+
+        if not kwargs["full_path"] and playout_status in [
             ObjectStatus.ONLINE,
             ObjectStatus.CREATING,
             ObjectStatus.UNKNOWN,
