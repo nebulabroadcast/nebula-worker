@@ -4,6 +4,16 @@ from typing import Any
 from nxtools import tc2s
 from nxtools.media import ffprobe
 
+VIDEO_META_MAP = {
+    "codec_name": "video/codec",
+    "pix_fmt": "video/pixel_format",
+    "width": "video/width",
+    "height": "video/height",
+    "index": "video/index",
+    "color_range": "video/color_range",
+    "color_space": "video/color_space",
+}
+
 
 class AudioTrack(dict[str, Any]):
     @property
@@ -141,13 +151,10 @@ def mediaprobe(source_file: str) -> dict[str, Any]:
             except Exception:
                 pass
 
-            meta["video/codec"] = stream["codec_name"]
-            meta["video/pixel_format"] = stream["pix_fmt"]
-            meta["video/width"] = stream["width"]
-            meta["video/height"] = stream["height"]
-            meta["video/index"] = stream["index"]
-            meta["video/color_range"] = stream.get("color_range", "")
-            meta["video/color_space"] = stream.get("color_space", "")
+            for source_tag, target_tag in VIDEO_META_MAP.items():
+                source_value = stream.get(source_tag)
+                if source_value:
+                    meta[target_tag] = stream[source_tag]
 
         elif stream["codec_type"] == "audio":
             meta["audio_tracks"].append(parse_audio_track(**stream))
