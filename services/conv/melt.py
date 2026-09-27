@@ -41,6 +41,11 @@ class NebulaMelt(BaseEncoder):
         assert asset
         assert params is not None
 
+        # Shared namespace for task scripts and expressions, so variables
+        # defined in <script> are visible to subsequent evals.
+        # (exec() no longer writes to function locals since Python 3.13)
+        ns = {**globals(), "self": self, "asset": asset, "params": params}
+
         self.files = {}
         self.cmd = ["melt", "-progress"]
 
@@ -64,31 +69,32 @@ class NebulaMelt(BaseEncoder):
 
         enc_params: list[str] = []
         for p in self.task:
+            ns["p"] = p
             if p.tag == "param":
                 key = p.attrib["name"]
-                value = str(eval(p.text)) if p.text else ""
+                value = str(eval(p.text, ns)) if p.text else ""
                 enc_params.append(f"{key}={value}")
 
             elif p.tag == "script":
                 if p.text:
                     try:
-                        exec(p.text)
+                        exec(p.text, ns)
                     except Exception:
                         nebula.log.traceback()
 
-            elif p.tag == "paramset" and eval(p.attrib["condition"]):
+            elif p.tag == "paramset" and eval(p.attrib["condition"], ns):
                 for pp in p.findall("param"):
                     key = pp.attrib["name"]
-                    value = str(eval(pp.text)) if pp.text else ""
+                    value = str(eval(pp.text, ns)) if pp.text else ""
                     enc_params.append(f"{key}={value}")
 
             elif p.tag == "output":
-                id_storage = int(eval(p.attrib["storage"]))
+                id_storage = int(eval(p.attrib["storage"], ns))
                 storage = storages[id_storage]
                 if not storage.is_writable:
                     raise ConversionError("Target storage is not writable")
 
-                target_rel_path = eval(p.text)
+                target_rel_path = eval(p.text, ns)
                 target_path = os.path.join(
                     storages[id_storage].local_path, target_rel_path
                 )

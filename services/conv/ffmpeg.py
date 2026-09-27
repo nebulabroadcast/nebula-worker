@@ -39,13 +39,18 @@ class NebulaFFMPEG(BaseEncoder):
         self.ffparams.extend(["-i", self.asset.file_path])
         asset = self.asset
         params = self.params
-        _ = asset, params, Overlay
+
+        # Shared namespace for task scripts and expressions, so variables
+        # defined in <script> are visible to subsequent evals.
+        # (exec() no longer writes to function locals since Python 3.13)
+        ns = {**globals(), "self": self, "asset": asset, "params": params}
         self.error_log = ""
 
         for p in self.task:
+            ns["p"] = p
             if p.tag == "param":
                 ptext = cleandoc(p.text.strip()) if p.text else ""
-                value = str(eval(ptext)) if p.text else ""
+                value = str(eval(ptext, ns)) if p.text else ""
                 if p.attrib["name"] == "ss":
                     self.ffparams.insert(1, "-ss")
                     self.ffparams.insert(2, value)
@@ -59,7 +64,7 @@ class NebulaFFMPEG(BaseEncoder):
                 if not ptext:
                     continue
                 try:
-                    tags = eval(ptext)
+                    tags = eval(ptext, ns)
                 except Exception as e:
                     nebula.log.traceback()
                     raise ConversionError("Error in task 'metadata' element.") from e
@@ -81,20 +86,20 @@ class NebulaFFMPEG(BaseEncoder):
             elif p.tag == "script":
                 if p.text:
                     try:
-                        exec(p.text)
+                        exec(p.text, ns)
                     except Exception as e:
                         nebula.log.traceback()
                         raise ConversionError("Error in task 'pre' script.") from e
 
-            elif p.tag == "paramset" and eval(p.attrib["condition"]):
+            elif p.tag == "paramset" and eval(p.attrib["condition"], ns):
                 for pp in p.findall("param"):
-                    value = str(eval(pp.text)) if pp.text else ""
+                    value = str(eval(pp.text, ns)) if pp.text else ""
                     self.ffparams.append("-" + pp.attrib["name"])
                     if value:
                         self.ffparams.append(value)
 
             elif p.tag == "output":
-                id_storage = int(eval(p.attrib["storage"]))
+                id_storage = int(eval(p.attrib["storage"], ns))
                 storage = storages[id_storage]
                 if not storage.is_writable:
                     raise ConversionError("Target storage is not writable")
@@ -102,7 +107,7 @@ class NebulaFFMPEG(BaseEncoder):
                 if not p.text:
                     raise ConversionError("Output path is not specified")
 
-                target_rel_path = eval(p.text)
+                target_rel_path = eval(p.text, ns)
 
                 if not target_rel_path:
                     raise ConversionError("Output path is empty")
