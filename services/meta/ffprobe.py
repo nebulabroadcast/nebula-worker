@@ -1,4 +1,5 @@
 import difflib
+from xml.etree import ElementTree
 
 import nebula
 from nebula.enum import MetaClass
@@ -31,6 +32,15 @@ def string2cs(key: str, value: str):
     if max_ratio < 0.85:
         return None
     return best_match
+
+
+def validate_package_asset(asset: Asset):
+    """Ensure a package (e.g. MLT XML) asset file is well-formed XML."""
+    try:
+        ElementTree.parse(asset.file_path)
+    except (ElementTree.ParseError, OSError):
+        return False
+    return asset
 
 
 def ffprobe_asset(asset: Asset):

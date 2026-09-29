@@ -11,7 +11,7 @@ from nebula.settings import settings
 from nebula.storages import storages
 from nxtools import FileObject
 
-from .ffprobe import ffprobe_asset
+from .ffprobe import ffprobe_asset, validate_package_asset
 
 
 class Service(BaseService):
@@ -163,6 +163,9 @@ class Service(BaseService):
                 ):
                     nebula.log.debug(f"{asset}: probing asset")
                     result = ffprobe_asset(asset)
+                elif asset["content_type"] == ContentType.PACKAGE:
+                    nebula.log.debug(f"{asset}: validating package asset")
+                    result = validate_package_asset(asset)
                 else:
                     result = None
 
@@ -191,7 +194,10 @@ class Service(BaseService):
             asset.save(set_mtime=False, notify=False)
 
         elif asset["status"] in (ObjectStatus.CREATING, ObjectStatus.OFFLINE):
-            result = ffprobe_asset(asset)
+            if asset["content_type"] == ContentType.PACKAGE:
+                result = validate_package_asset(asset)
+            else:
+                result = ffprobe_asset(asset)
             if not result:
                 nebula.log.warning(f"{asset}: Asset is corrupted")
                 asset["status"] = ObjectStatus.CORRUPTED
