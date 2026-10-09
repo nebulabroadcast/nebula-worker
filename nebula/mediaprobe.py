@@ -14,6 +14,50 @@ VIDEO_META_MAP = {
     "color_space": "video/color_space",
 }
 
+# Codecs used for still pictures. MJPEG is also a (rare) motion video codec,
+# so a stream with these is only treated as a picture if it has a single frame.
+STILL_IMAGE_CODECS = {"mjpeg", "png", "bmp", "gif", "webp", "tiff", "jpegls"}
+
+
+def is_cover_image(stream: dict[str, Any], stream_count: int) -> bool:
+    """Return True for video streams that are pictures, not video tracks.
+
+    Cover art of audio files, embedded thumbnails and similar. A standalone
+    image file (a single stream) is not a cover: it is the content itself.
+    """
+    disposition = stream.get("disposition") or {}
+    if disposition.get("attached_pic") or disposition.get("timed_thumbnails"):
+        return True
+
+    if stream.get("codec_name") not in STILL_IMAGE_CODECS or stream_count < 2:
+        return False
+
+    # Untagged still picture muxed next to other streams: a single frame.
+    # Containers report this differently (mp4: nb_frames, mkv: DURATION tag).
+    try:
+        return int(stream["nb_frames"]) <= 1
+    except (KeyError, ValueError):
+        pass
+    if (duration := stream_duration(stream)) is not None:
+        return duration <= 1.0
+    return stream.get("avg_frame_rate") in (None, "", "0/0")
+
+
+def stream_duration(stream: dict[str, Any]) -> float | None:
+    """Stream duration in seconds from `duration` or the mkv DURATION tag."""
+    try:
+        return float(stream["duration"])
+    except (KeyError, ValueError):
+        pass
+    tag = (stream.get("tags") or {}).get("DURATION")
+    if not tag:
+        return None
+    try:
+        h, m, s = tag.split(":")
+        return int(h) * 3600 + int(m) * 60 + float(s)
+    except ValueError:
+        return None
+
 
 class AudioTrack(dict[str, Any]):
     @property
@@ -120,12 +164,12 @@ def mediaprobe(source_file: str) -> dict[str, Any]:
 
     for stream in probe_result["streams"]:
         if stream["codec_type"] == "video":
-            if "video/index" in meta and source_vdur:
-                # We already have a video track with a duration
+            if is_cover_image(stream, len(probe_result["streams"])):
+                meta.setdefault("thumbnail_track", stream["index"])
                 continue
 
-            if stream["disposition"].get("attached_pic", 0) == 1:
-                meta["thumbnail_track"] = stream["index"]
+            if "video/index" in meta and source_vdur:
+                # We already have a video track with a duration
                 continue
 
             # Frame rate detection
@@ -153,8 +197,9 @@ def mediaprobe(source_file: str) -> dict[str, Any]:
 
             for source_tag, target_tag in VIDEO_META_MAP.items():
                 source_value = stream.get(source_tag)
-                if source_value:
-                    meta[target_tag] = stream[source_tag]
+                # 0 is a valid value (stream index), only skip missing ones
+                if source_value is not None and source_value != "":
+                    meta[target_tag] = source_value
 
         elif stream["codec_type"] == "audio":
             meta["audio_tracks"].append(parse_audio_track(**stream))
@@ -181,10 +226,18 @@ def mediaprobe(source_file: str) -> dict[str, Any]:
 
     # Content type
 
-    if meta.get("duration"):
-        if meta.get("num_frames") == 1:
-            meta["content_type"] = 3  # IMAGE
-        elif "video/index" in meta:
+    # Still images have no duration (png) or a single frame (jpg: one frame
+    # at 25 fps). Pictures next to audio are covers, handled above.
+    is_image = (
+        "video/index" in meta
+        and not meta["audio_tracks"]
+        and (not meta.get("duration") or round(meta.get("num_frames", 0)) <= 1)
+    )
+
+    if is_image:
+        meta["content_type"] = 3  # IMAGE
+    elif meta.get("duration"):
+        if "video/index" in meta:
             meta["content_type"] = 2  # VIDEO
         elif meta["audio_tracks"]:
             meta["content_type"] = 1  # AUDIO
