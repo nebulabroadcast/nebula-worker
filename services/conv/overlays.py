@@ -579,4 +579,3 @@ class Overlay:
 
         filter_parts = [f"{k}='{v}'" for k, v in opts.items()]
         return f"drawtext={':'.join(filter_parts)}"
-

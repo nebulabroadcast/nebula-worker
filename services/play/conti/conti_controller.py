@@ -17,6 +17,12 @@ class NebulaConti(Conti):
         self.parent.parent.cue_next()
 
     def progress_handler(self) -> None:
+        if self.current is not self.parent.last_source:
+            self.parent.last_source = self.current
+            try:
+                self.parent.parent.on_change()
+            except Exception:
+                nebula.log.traceback("Playout on_change failed")
         self.parent._position = self.current.position if self.current else 0
         self.parent._duration = self.current.duration if self.current else 0
         self.parent.parent.on_progress()
@@ -29,6 +35,7 @@ class ContiController(BaseController):
         self.parent = parent
         self.cueing = None
         self.cued = None
+        self.last_source: ContiSource | None = None
         self._position = self._duration = 0
         settings = {
             "playlist_length": 2,
@@ -122,8 +129,10 @@ class ContiController(BaseController):
 
         assert self.cued, "Failed to cue item"
 
-        if len(self.conti.playlist) > 1:
-            del self.conti.playlist[1:]
+        # Replace previously cued sources
+        for source in self.conti.playlist[1:]:
+            source.stop(force=True)
+        del self.conti.playlist[1:]
         self.conti.playlist.append(self.cued)
 
         if not self.conti.started:
