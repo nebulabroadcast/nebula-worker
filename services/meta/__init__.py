@@ -195,6 +195,8 @@ class Service(BaseService):
             if asset["status"] == ObjectStatus.RESET:
                 asset.load_sidecar_metadata()
 
+            file_changed = fmtime != asset["file/mtime"] or fsize != asset["file/size"]
+
             # Filesize must be changed to update metadata automatically.
 
             if fsize == asset["file/size"] and asset["status"] not in [
@@ -217,10 +219,12 @@ class Service(BaseService):
                         f"{asset}: File has been changed. Updating metadata."
                     )
 
+                # QC (q namespace) stays valid while the file is the same
+                cleared_ns = ("f", "q") if file_changed else ("f",)
                 keys = list(asset.meta.keys())
                 for key in keys:
                     if key in settings.metatypes:
-                        if settings.metatypes[key].ns in ("f", "q"):
+                        if settings.metatypes[key].ns in cleared_ns:
                             del asset.meta[key]
 
                 asset["file/size"] = fsize
@@ -283,7 +287,9 @@ class Service(BaseService):
             restart_actions = asset["status"] == ObjectStatus.CREATING
 
             asset["status"] = ObjectStatus.ONLINE
-            asset["qc/state"] = 0
+            # New or changed file; a file that reappeared keeps its QC
+            if restart_actions:
+                asset["qc/state"] = 0
             asset.save()
 
             if self.restart_on_update and restart_actions:
