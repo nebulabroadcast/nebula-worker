@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 class Watchfolder:
     id_storage: int
     rel_path: str
-    quarantine_time: int
     id_folder: int
     recursive: bool
     hidden: bool
@@ -28,7 +27,6 @@ class Watchfolder:
     def __init__(self, settings: "Element"):
         self.id_storage = int(settings.attrib["id_storage"])
         self.rel_path = settings.attrib["path"]
-        self.quarantine_time = int(settings.attrib.get("quarantine_time", "10"))
         self.id_folder = int(settings.attrib.get("id_folder", 12))
         self.recursive = bool(settings.attrib.get("recursive", False))
         self.hidden = bool(settings.attrib.get("hidden", False))
@@ -56,20 +54,15 @@ class Watchfolder:
         ):
             if not file_object.size:
                 continue
-
-            if (
-                self.quarantine_time
-                and time.time() - file_object.mtime < self.quarantine_time
-            ):
-                nebula.log.trace(f"{file_object.base_name} is too young. Skipping")
-                continue
-
             yield file_object
 
 
 class Service(BaseService):
     def on_init(self):
-        pass
+        # Files still being copied are handled by meta: an asset turns online
+        # only after its file stops changing
+        if any("quarantine_time" in f.attrib for f in self.settings.findall("folder")):
+            nebula.log.warning("quarantine_time in watch settings is ignored")
 
     def on_main(self):
         db = DB()

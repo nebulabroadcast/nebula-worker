@@ -20,7 +20,9 @@ HOT_STATUSES = [ObjectStatus.CREATING, ObjectStatus.RESET, ObjectStatus.RETRIEVI
 MTIME_MARGIN = 5
 
 
-def needs_processing(path: str, status: int, file_mtime: float | None) -> bool:
+def needs_processing(
+    path: str, status: int, file_mtime: float | None, file_size: int | None
+) -> bool:
     """False when process() would neither save nor probe the asset."""
     try:
         st = os.stat(path)
@@ -34,7 +36,7 @@ def needs_processing(path: str, status: int, file_mtime: float | None) -> bool:
         )
     if st.st_size == 0:
         return status not in (ObjectStatus.OFFLINE, ObjectStatus.RETRIEVING)
-    if int(st.st_mtime) != file_mtime:
+    if int(st.st_mtime) != file_mtime or st.st_size != file_size:
         return True
     return status in (*HOT_STATUSES, ObjectStatus.OFFLINE)
 
@@ -87,7 +89,7 @@ class Service(BaseService):
         # do not scan trashed and archived files
         query = """
             SELECT id, status, (meta->>'id_storage')::integer, meta->>'path',
-                (meta->>'file/mtime')::numeric
+                (meta->>'file/mtime')::numeric, (meta->>'file/size')::bigint
             FROM assets
             WHERE media_type = %s AND status NOT IN (3, 4)
             AND meta->>'path' IS NOT NULL AND meta->>'id_storage' IS NOT NULL
@@ -102,11 +104,11 @@ class Service(BaseService):
         db.query(query, args)
         rows = db.fetchall()
         processed = 0
-        for id_asset, status, id_storage, path, file_mtime in rows:
+        for id_asset, status, id_storage, path, file_mtime, file_size in rows:
             if id_storage not in roots:
                 roots[id_storage] = storages[id_storage].local_path
             if not needs_processing(
-                os.path.join(roots[id_storage], path), status, file_mtime
+                os.path.join(roots[id_storage], path), status, file_mtime, file_size
             ):
                 continue
             self.process(Asset(id_asset, db=db))
@@ -156,10 +158,12 @@ class Service(BaseService):
                 asset.save()
             return
 
-        if fmtime != asset["file/mtime"] or asset["status"] in [
-            ObjectStatus.RESET,
-            ObjectStatus.RETRIEVING,
-        ]:
+        # Size too: some copy tools keep the source mtime while writing
+        if (
+            fmtime != asset["file/mtime"]
+            or fsize != asset["file/size"]
+            or asset["status"] in [ObjectStatus.RESET, ObjectStatus.RETRIEVING]
+        ):
             try:
                 f = asset_file.open("rb")
             except Exception:
