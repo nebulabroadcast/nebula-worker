@@ -42,9 +42,16 @@ def needs_processing(
 
 
 def is_unmounted_storage(id_storage: int) -> bool:
-    """The storage marker is missing, so the storage isn't (or no longer) mounted"""
-    root = storages[id_storage].local_path
-    return not os.path.exists(os.path.join(root, ".nebula_root"))
+    """A network storage whose marker is missing isn't (or no longer) mounted.
+
+    Local storages (and unconfigured ones, which fall back to local) are
+    always mounted. The storage monitor writes the marker on network storages
+    only when they are mounted.
+    """
+    storage = storages[id_storage]
+    if storage.protocol == "local":
+        return False
+    return not os.path.exists(os.path.join(storage.local_path, ".nebula_root"))
 
 
 class Service(BaseService):
@@ -151,7 +158,7 @@ class Service(BaseService):
                 if is_unmounted_storage(asset["id_storage"]):
                     nebula.log.warning(
                         f"{asset}: File not found, but storage {asset['id_storage']} "
-                        "has no .nebula_root (unmounted?). Not turning offline"
+                        "is not mounted. Not turning offline"
                     )
                     return
                 nebula.log.warning(f"{asset}: Turning offline")
