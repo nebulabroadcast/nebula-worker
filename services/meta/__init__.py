@@ -1,5 +1,6 @@
 import os
 import time
+from stat import S_ISREG
 from typing import Literal
 
 import nebula
@@ -13,12 +14,35 @@ from nxtools import FileObject
 
 from .ffprobe import ffprobe_asset, validate_package_asset
 
+# Assets that need attention on every pass, not only during a sweep
+HOT_STATUSES = [ObjectStatus.CREATING, ObjectStatus.RESET, ObjectStatus.RETRIEVING]
+# Margin for clock skew between hosts and the integer mtime column
+MTIME_MARGIN = 5
+
+
+def needs_processing(path: str, status: int, file_mtime: float | None) -> bool:
+    """False when process() would neither save nor probe the asset."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        st = None
+    if st is None or not S_ISREG(st.st_mode):
+        return status in (
+            ObjectStatus.ONLINE,
+            ObjectStatus.RESET,
+            ObjectStatus.CREATING,
+        )
+    if st.st_size == 0:
+        return status not in (ObjectStatus.OFFLINE, ObjectStatus.RETRIEVING)
+    if int(st.st_mtime) != file_mtime:
+        return True
+    return status in (*HOT_STATUSES, ObjectStatus.OFFLINE)
+
 
 class Service(BaseService):
     restart_on_update: Literal["all"] | list[int] | None
 
     def on_init(self):
-        self.conds = []
         rou = self.settings.attrib.get("restart_on_update", "all")
         if rou.lower() == "all":
             self.restart_on_update = "all"
@@ -31,55 +55,73 @@ class Service(BaseService):
             self.restart_on_update,
         )
 
-        for cond in self.settings.findall("cond"):
-            if cond is None:
-                continue
-            if not cond.text:
-                continue
-            x = eval(f"lambda asset: {cond.text}")
-            self.conds.append(x)
+        self.sweep_interval = int(self.settings.attrib.get("sweep_interval", 30))
+        self.last_sweep = 0.0
+        self.last_pass = 0.0
+        self.unmounted: set[int] = set()
+
+        if self.settings.findall("cond"):
+            nebula.log.warning(
+                "Conditions (<cond>) in meta service settings are ignored. "
+                "Run a single meta service and remove them."
+            )
 
     def on_main(self):
-        self.mounted_storages = []
+        start = time.time()
+        sweep = start - self.last_sweep >= self.sweep_interval
+
+        roots: dict[int, str] = {}
+        unmounted: set[int] = set()
         for storage in storages:
-            storage_path = storage.local_path
-            if os.path.isdir(storage_path) and len(os.listdir(storage_path)) != 0:
-                self.mounted_storages.append(storage.id)
+            path = storage.local_path
+            mounted = os.path.isdir(path) and len(os.listdir(path)) != 0
+            if storage.protocol != "local" and not mounted:
+                unmounted.add(storage.id)
+            roots[storage.id] = path
+        for id_storage in unmounted - self.unmounted:
+            nebula.log.warning(f"Skipping assets on unmounted storage {id_storage}")
+        for id_storage in self.unmounted - unmounted:
+            nebula.log.info(f"Storage {id_storage} is mounted again")
+        self.unmounted = unmounted
+
+        # do not scan trashed and archived files
+        query = """
+            SELECT id, status, (meta->>'id_storage')::integer, meta->>'path',
+                (meta->>'file/mtime')::numeric
+            FROM assets
+            WHERE media_type = %s AND status NOT IN (3, 4)
+            AND meta->>'path' IS NOT NULL AND meta->>'id_storage' IS NOT NULL
+            AND (meta->>'id_storage')::integer <> ALL(%s::integer[])
+        """
+        args: list = [MediaType.FILE, list(unmounted)]
+        if not sweep:
+            query += " AND (status = ANY(%s) OR mtime >= %s)"
+            args += [HOT_STATUSES, int(self.last_pass) - MTIME_MARGIN]
 
         db = DB()
-        # do not scan trashed and archived files
-        db.query(
-            """
-            SELECT meta FROM assets
-            WHERE media_type=%s
-            AND status NOT IN (3, 4)
-            """,
-            [MediaType.FILE],
-        )
-        i = 0
-        for (meta,) in db.fetchall():
-            asset = Asset(meta=meta, db=db)
-            self.process(asset)
-            i += 1
+        db.query(query, args)
+        rows = db.fetchall()
+        processed = 0
+        for id_asset, status, id_storage, path, file_mtime in rows:
+            if id_storage not in roots:
+                roots[id_storage] = storages[id_storage].local_path
+            if not needs_processing(
+                os.path.join(roots[id_storage], path), status, file_mtime
+            ):
+                continue
+            self.process(Asset(id_asset, db=db))
+            processed += 1
+
+        self.last_pass = start
+        if sweep:
+            self.last_sweep = start
+            nebula.log.debug(
+                f"Swept {len(rows)} assets in {time.time() - start:.2f} s, "
+                f"processed {processed}"
+            )
 
     def process(self, asset):
-        for cond in self.conds:
-            if not cond(asset):
-                return
-
         asset_file = FileObject(asset.file_path)
-        id_storage = asset["id_storage"]
-        if not id_storage:
-            return
-        if (
-            storages[id_storage].protocol != "local"
-            and id_storage not in self.mounted_storages
-        ):
-            nebula.log.warning(
-                f"Skipping unmounted storage {asset['id_storage']} of {asset}"
-            )
-            return
-
         try:
             file_exists = asset_file.is_reg
         except OSError:
