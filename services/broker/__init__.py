@@ -47,7 +47,7 @@ class Service(BaseService):
             SELECT meta FROM assets
             WHERE status = %s AND NOT (meta ?& %s)
         """
-        args: list = [ObjectStatus.ONLINE, self.created_keys]
+        args: list[object] = [ObjectStatus.ONLINE, self.created_keys]
         if not full_scan:
             query += " AND mtime >= %s"
             args.append(int(self.last_pass) - MTIME_MARGIN)

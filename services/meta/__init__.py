@@ -93,7 +93,7 @@ class Service(BaseService):
             AND meta->>'path' IS NOT NULL AND meta->>'id_storage' IS NOT NULL
             AND (meta->>'id_storage')::integer <> ALL(%s::integer[])
         """
-        args: list = [MediaType.FILE, list(unmounted)]
+        args: list[object] = [MediaType.FILE, list(unmounted)]
         if not sweep:
             query += " AND (status = ANY(%s) OR mtime >= %s)"
             args += [HOT_STATUSES, int(self.last_pass) - MTIME_MARGIN]
@@ -133,6 +133,14 @@ class Service(BaseService):
                 ObjectStatus.RESET,
                 ObjectStatus.CREATING,
             ]:
+                # The storage may have been unmounted since the pass started
+                root = storages[asset["id_storage"]].local_path
+                if not os.path.exists(os.path.join(root, ".nebula_root")):
+                    nebula.log.warning(
+                        f"{asset}: File not found, but storage {asset['id_storage']} "
+                        "has no .nebula_root (unmounted?). Not turning offline"
+                    )
+                    return
                 nebula.log.warning(f"{asset}: Turning offline")
                 asset["status"] = ObjectStatus.OFFLINE
                 asset.save()
