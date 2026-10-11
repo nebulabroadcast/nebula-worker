@@ -41,6 +41,12 @@ def needs_processing(
     return status in (*HOT_STATUSES, ObjectStatus.OFFLINE)
 
 
+def is_unmounted_storage(id_storage: int) -> bool:
+    """The storage marker is missing, so the storage isn't (or no longer) mounted"""
+    root = storages[id_storage].local_path
+    return not os.path.exists(os.path.join(root, ".nebula_root"))
+
+
 class Service(BaseService):
     restart_on_update: Literal["all"] | list[int] | None
 
@@ -75,11 +81,9 @@ class Service(BaseService):
         roots: dict[int, str] = {}
         unmounted: set[int] = set()
         for storage in storages:
-            path = storage.local_path
-            mounted = os.path.isdir(path) and len(os.listdir(path)) != 0
-            if storage.protocol != "local" and not mounted:
+            if is_unmounted_storage(storage.id):
                 unmounted.add(storage.id)
-            roots[storage.id] = path
+            roots[storage.id] = storage.local_path
         for id_storage in unmounted - self.unmounted:
             nebula.log.warning(f"Skipping assets on unmounted storage {id_storage}")
         for id_storage in self.unmounted - unmounted:
@@ -88,11 +92,19 @@ class Service(BaseService):
 
         # do not scan trashed and archived files
         query = """
-            SELECT id, status, (meta->>'id_storage')::integer, meta->>'path',
-                (meta->>'file/mtime')::numeric, (meta->>'file/size')::bigint
+            SELECT
+                id,
+                status,
+                (meta->>'id_storage')::integer,
+                meta->>'path',
+                (meta->>'file/mtime')::numeric,
+                (meta->>'file/size')::bigint
             FROM assets
-            WHERE media_type = %s AND status NOT IN (3, 4)
-            AND meta->>'path' IS NOT NULL AND meta->>'id_storage' IS NOT NULL
+            WHERE
+                media_type = %s
+            AND status NOT IN (3, 4)
+            AND meta->>'path' IS NOT NULL
+            AND meta->>'id_storage' IS NOT NULL
             AND (meta->>'id_storage')::integer <> ALL(%s::integer[])
         """
         args: list[object] = [MediaType.FILE, list(unmounted)]
@@ -117,7 +129,7 @@ class Service(BaseService):
         self.last_pass = start
         if sweep:
             self.last_sweep = start
-            nebula.log.debug(
+            nebula.log.trace(
                 f"Swept {len(rows)} assets in {time.time() - start:.2f} s, "
                 f"processed {processed}"
             )
@@ -136,8 +148,7 @@ class Service(BaseService):
                 ObjectStatus.CREATING,
             ]:
                 # The storage may have been unmounted since the pass started
-                root = storages[asset["id_storage"]].local_path
-                if not os.path.exists(os.path.join(root, ".nebula_root")):
+                if is_unmounted_storage(asset["id_storage"]):
                     nebula.log.warning(
                         f"{asset}: File not found, but storage {asset['id_storage']} "
                         "has no .nebula_root (unmounted?). Not turning offline"
