@@ -1,5 +1,6 @@
 import os
 import time
+from stat import S_ISREG
 from typing import Literal
 
 import nebula
@@ -13,12 +14,50 @@ from nxtools import FileObject
 
 from .ffprobe import ffprobe_asset, validate_package_asset
 
+# Assets that need attention on every pass, not only during a sweep
+HOT_STATUSES = [ObjectStatus.CREATING, ObjectStatus.RESET, ObjectStatus.RETRIEVING]
+# Margin for clock skew between hosts and the integer mtime column
+MTIME_MARGIN = 5
+
+
+def needs_processing(
+    path: str, status: int, file_mtime: float | None, file_size: int | None
+) -> bool:
+    """False when process() would neither save nor probe the asset."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        st = None
+    if st is None or not S_ISREG(st.st_mode):
+        return status in (
+            ObjectStatus.ONLINE,
+            ObjectStatus.RESET,
+            ObjectStatus.CREATING,
+        )
+    if st.st_size == 0:
+        return status not in (ObjectStatus.OFFLINE, ObjectStatus.RETRIEVING)
+    if int(st.st_mtime) != file_mtime or st.st_size != file_size:
+        return True
+    return status in (*HOT_STATUSES, ObjectStatus.OFFLINE)
+
+
+def is_unmounted_storage(id_storage: int) -> bool:
+    """A network storage whose marker is missing isn't (or no longer) mounted.
+
+    Local storages (and unconfigured ones, which fall back to local) are
+    always mounted. The storage monitor writes the marker on network storages
+    only when they are mounted.
+    """
+    storage = storages[id_storage]
+    if storage.protocol == "local":
+        return False
+    return not os.path.exists(os.path.join(storage.local_path, ".nebula_root"))
+
 
 class Service(BaseService):
     restart_on_update: Literal["all"] | list[int] | None
 
     def on_init(self):
-        self.conds = []
         rou = self.settings.attrib.get("restart_on_update", "all")
         if rou.lower() == "all":
             self.restart_on_update = "all"
@@ -31,55 +70,79 @@ class Service(BaseService):
             self.restart_on_update,
         )
 
-        for cond in self.settings.findall("cond"):
-            if cond is None:
-                continue
-            if not cond.text:
-                continue
-            x = eval(f"lambda asset: {cond.text}")
-            self.conds.append(x)
+        self.sweep_interval = int(self.settings.attrib.get("sweep_interval", 30))
+        self.last_sweep = 0.0
+        self.last_pass = 0.0
+        self.unmounted: set[int] = set()
+
+        if self.settings.findall("cond"):
+            nebula.log.warning(
+                "Conditions (<cond>) in meta service settings are ignored. "
+                "Run a single meta service and remove them."
+            )
 
     def on_main(self):
-        self.mounted_storages = []
+        start = time.time()
+        sweep = start - self.last_sweep >= self.sweep_interval
+
+        roots: dict[int, str] = {}
+        unmounted: set[int] = set()
         for storage in storages:
-            storage_path = storage.local_path
-            if os.path.isdir(storage_path) and len(os.listdir(storage_path)) != 0:
-                self.mounted_storages.append(storage.id)
+            if is_unmounted_storage(storage.id):
+                unmounted.add(storage.id)
+            roots[storage.id] = storage.local_path
+        for id_storage in unmounted - self.unmounted:
+            nebula.log.warning(f"Skipping assets on unmounted storage {id_storage}")
+        for id_storage in self.unmounted - unmounted:
+            nebula.log.info(f"Storage {id_storage} is mounted again")
+        self.unmounted = unmounted
+
+        # do not scan trashed and archived files
+        query = """
+            SELECT
+                id,
+                status,
+                (meta->>'id_storage')::integer,
+                meta->>'path',
+                (meta->>'file/mtime')::numeric,
+                (meta->>'file/size')::bigint
+            FROM assets
+            WHERE
+                media_type = %s
+            AND status NOT IN (3, 4)
+            AND meta->>'path' IS NOT NULL
+            AND meta->>'id_storage' IS NOT NULL
+            AND (meta->>'id_storage')::integer <> ALL(%s::integer[])
+        """
+        args: list[object] = [MediaType.FILE, list(unmounted)]
+        if not sweep:
+            query += " AND (status = ANY(%s) OR mtime >= %s)"
+            args += [HOT_STATUSES, int(self.last_pass) - MTIME_MARGIN]
 
         db = DB()
-        # do not scan trashed and archived files
-        db.query(
-            """
-            SELECT meta FROM assets
-            WHERE media_type=%s
-            AND status NOT IN (3, 4)
-            """,
-            [MediaType.FILE],
-        )
-        i = 0
-        for (meta,) in db.fetchall():
-            asset = Asset(meta=meta, db=db)
-            self.process(asset)
-            i += 1
+        db.query(query, args)
+        rows = db.fetchall()
+        processed = 0
+        for id_asset, status, id_storage, path, file_mtime, file_size in rows:
+            if id_storage not in roots:
+                roots[id_storage] = storages[id_storage].local_path
+            if not needs_processing(
+                os.path.join(roots[id_storage], path), status, file_mtime, file_size
+            ):
+                continue
+            self.process(Asset(id_asset, db=db))
+            processed += 1
+
+        self.last_pass = start
+        if sweep:
+            self.last_sweep = start
+            nebula.log.trace(
+                f"Swept {len(rows)} assets in {time.time() - start:.2f} s, "
+                f"processed {processed}"
+            )
 
     def process(self, asset):
-        for cond in self.conds:
-            if not cond(asset):
-                return
-
         asset_file = FileObject(asset.file_path)
-        id_storage = asset["id_storage"]
-        if not id_storage:
-            return
-        if (
-            storages[id_storage].protocol != "local"
-            and id_storage not in self.mounted_storages
-        ):
-            nebula.log.warning(
-                f"Skipping unmounted storage {asset['id_storage']} of {asset}"
-            )
-            return
-
         try:
             file_exists = asset_file.is_reg
         except OSError:
@@ -91,6 +154,13 @@ class Service(BaseService):
                 ObjectStatus.RESET,
                 ObjectStatus.CREATING,
             ]:
+                # The storage may have been unmounted since the pass started
+                if is_unmounted_storage(asset["id_storage"]):
+                    nebula.log.warning(
+                        f"{asset}: File not found, but storage {asset['id_storage']} "
+                        "is not mounted. Not turning offline"
+                    )
+                    return
                 nebula.log.warning(f"{asset}: Turning offline")
                 asset["status"] = ObjectStatus.OFFLINE
                 asset.save()
@@ -106,10 +176,12 @@ class Service(BaseService):
                 asset.save()
             return
 
-        if fmtime != asset["file/mtime"] or asset["status"] in [
-            ObjectStatus.RESET,
-            ObjectStatus.RETRIEVING,
-        ]:
+        # Size too: some copy tools keep the source mtime while writing
+        if (
+            fmtime != asset["file/mtime"]
+            or fsize != asset["file/size"]
+            or asset["status"] in [ObjectStatus.RESET, ObjectStatus.RETRIEVING]
+        ):
             try:
                 f = asset_file.open("rb")
             except Exception:
@@ -122,6 +194,8 @@ class Service(BaseService):
 
             if asset["status"] == ObjectStatus.RESET:
                 asset.load_sidecar_metadata()
+
+            file_changed = fmtime != asset["file/mtime"] or fsize != asset["file/size"]
 
             # Filesize must be changed to update metadata automatically.
 
@@ -145,10 +219,12 @@ class Service(BaseService):
                         f"{asset}: File has been changed. Updating metadata."
                     )
 
+                # QC (q namespace) stays valid while the file is the same
+                cleared_ns = ("f", "q") if file_changed else ("f",)
                 keys = list(asset.meta.keys())
                 for key in keys:
                     if key in settings.metatypes:
-                        if settings.metatypes[key].ns in ("f", "q"):
+                        if settings.metatypes[key].ns in cleared_ns:
                             del asset.meta[key]
 
                 asset["file/size"] = fsize
@@ -211,7 +287,9 @@ class Service(BaseService):
             restart_actions = asset["status"] == ObjectStatus.CREATING
 
             asset["status"] = ObjectStatus.ONLINE
-            asset["qc/state"] = 0
+            # New or changed file; a file that reappeared keeps its QC
+            if restart_actions:
+                asset["qc/state"] = 0
             asset.save()
 
             if self.restart_on_update and restart_actions:
