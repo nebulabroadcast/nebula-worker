@@ -8,6 +8,7 @@ from nxtools import FileObject, get_files, xml
 
 from .common import ImportDefinition, create_error
 from .process import import_asset
+from .transcoder import ImportProfile, load_profiles
 
 
 class Service(BaseService):
@@ -15,6 +16,8 @@ class Service(BaseService):
         self.actions: list[ImportDefinition] = []
         self.exts: list[str] = FileTypes.exts_by_type(ContentType.VIDEO)
         self.filesizes: dict[str, int] = {}
+        self.profiles: dict[str, ImportProfile] = load_profiles()
+        nebula.log.debug(f"Import profiles: {', '.join(self.profiles) or 'none'}")
 
         db = nebula.DB()
         db.query(
@@ -51,6 +54,13 @@ class Service(BaseService):
                 assert profile
             except (AttributeError, AssertionError):
                 profile = "xdcamhd422-1080i50"
+
+            if profile not in self.profiles:
+                nebula.log.error(
+                    f"Import action {title} uses unknown profile {profile}. "
+                    f"Available: {', '.join(self.profiles) or 'none'}."
+                )
+                continue
 
             if not (import_storage and import_dir):
                 nebula.log.error(

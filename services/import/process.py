@@ -117,7 +117,7 @@ def import_asset(
         transcoder = ImportTranscoder(
             import_file.path,
             temp_file,
-            action.profile,
+            service.profiles[action.profile],
         )
         transcoder.start(progress_handler)
     except Exception as e:

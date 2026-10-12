@@ -1,15 +1,17 @@
 import json
 import os
 import subprocess
+import tomllib
 from functools import cached_property
+from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 import nebula
 from nxtools.media.ffmpeg import FFMPEG
 
-from .profiles import PROFILES
+PROFILES_DIR = Path(__file__).parent / "profiles"
 
 
 def guess_aspect(w: float, h: float) -> float:
@@ -32,6 +34,41 @@ class VideoTrack(BaseTrack):
     height: int
     fps: float
     aspect: float
+
+
+class ImportProfile(BaseModel):
+    """Target format of an import, one profiles/<name>.toml per profile."""
+
+    # "smca": merge several mono audio tracks into one multichannel track
+    audio_layout: str | None = None
+    # Sources matching all keys of any entry are copied, not re-encoded
+    video_fast_import: list[dict[str, Any]] = []
+    # Video options used instead of video_encoding for a fast import
+    video_copy: list[str] = ["-c:v", "copy"]
+    video_encoding: list[str]
+    audio_encoding: list[str]
+
+    @field_validator("video_fast_import")
+    @classmethod
+    def check_fast_import_keys(
+        cls, value: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        for conds in value:
+            if unknown := set(conds) - set(VideoTrack.model_fields):
+                raise ValueError(f"unknown video track fields {sorted(unknown)}")
+        return value
+
+
+def load_profiles() -> dict[str, ImportProfile]:
+    """Load profiles/*.toml. A broken file is logged and skipped."""
+    profiles = {}
+    for path in sorted(PROFILES_DIR.glob("*.toml")):
+        try:
+            with path.open("rb") as f:
+                profiles[path.stem] = ImportProfile(**tomllib.load(f))
+        except Exception as e:
+            nebula.log.error(f"Invalid import profile {path.name}: {e}")
+    return profiles
 
 
 class AudioTrack(BaseTrack):
@@ -98,14 +135,10 @@ class ImportTranscoder:
     source_path: str
     target_path: str
 
-    def __init__(self, source_path: str, target_path: str, profile_name: str):
+    def __init__(self, source_path: str, target_path: str, profile: ImportProfile):
         self.source_path = source_path
         self.target_path = target_path
-        self.profile_name = profile_name
-
-    @property
-    def profile(self) -> dict[str, Any]:
-        return PROFILES[self.profile_name]
+        self.profile = profile
 
     @cached_property
     def meta(self) -> MediaInfo:
@@ -153,7 +186,7 @@ class ImportTranscoder:
             if all(track.channels == 1 for track in self.audio_tracks):
                 # All audio tracks are mono
 
-                if self.profile.get("audio_layout") == "smca":
+                if self.profile.audio_layout == "smca":
                     # merge all mono audio tracks into
                     # a single multi-channel audio track
                     link = ""
@@ -200,8 +233,8 @@ class ImportTranscoder:
         # Check whether we can use fast import
 
         use_fast_import = False
-        if self.profile.get("video_fast_import"):
-            for fast_import_conds in self.profile["video_fast_import"]:
+        if self.profile.video_fast_import:
+            for fast_import_conds in self.profile.video_fast_import:
                 for key, value in fast_import_conds.items():
                     if getattr(self.video_track, key) != value:
                         break
@@ -212,17 +245,16 @@ class ImportTranscoder:
         # Use fast import if possible
 
         if use_fast_import:
-            cmd.extend(["-c:v", "copy"])
+            cmd.extend(self.profile.video_copy)
         else:
-            cmd.extend(self.profile["video_encoding"])
+            cmd.extend(self.profile.video_encoding)
 
         # Audio and output
 
-        cmd.extend(self.profile["audio_encoding"])
+        cmd.extend(self.profile.audio_encoding)
         cmd.append(self.target_path)
 
         ff = FFMPEG(*cmd)
-        nebula.log.debug("Executing", " ".join(ff.cmd))
         ff.start()
         ff.wait(progress_handler=lambda x: progress_handler(x / self.duration * 100))
         if ff.return_code:
