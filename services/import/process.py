@@ -181,7 +181,9 @@ def import_asset(
         metatype = nebula.settings.metatypes.get(key)
         if metatype and (metatype.ns in ["q", "f"]):
             del asset.meta[key]
-    asset["status"] = ObjectStatus.OFFLINE
+    asset["status"] = ObjectStatus.CREATING
+    # The file was renamed into place complete: meta needn't wait for it
+    asset["__file/written"] = os.path.getsize(asset.file_path)
     asset.save()
 
     job.done("Import finished")

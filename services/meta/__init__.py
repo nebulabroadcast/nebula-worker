@@ -262,8 +262,13 @@ class Service(BaseService):
                     asset["status"] = ObjectStatus.CREATING
                 asset.save()
 
+        # A writer that moved a complete file into place vouches for it with
+        # its size. Consumed on first look; a stale or wrong value just means
+        # the usual wait.
+        written = asset.meta.pop("__file/written", None)
         if (
             asset["status"] == ObjectStatus.CREATING
+            and written != asset["file/size"]
             and asset["mtime"] + 15 > time.time()
         ):
             nebula.log.debug(f"{asset}: Waiting for completion assurance")
