@@ -109,76 +109,81 @@ def import_asset(
             job.fail("Unable to create temp file")
             return False
 
-    # Transcode
+    # Transcode. The asset file is touched only after a successful transcode,
+    # so a failed import leaves the asset as it was.
 
-    result = False
+    error: str | None = None
     try:
         transcoder = ImportTranscoder(
             import_file.path,
             temp_file,
             action.profile,
         )
-
-        result = transcoder.start(progress_handler)
+        transcoder.start(progress_handler)
     except Exception as e:
-        # Result is still false, so job will fail
-        # We just log the problem
-        nebula.log.error(f"{e}")
+        error = str(e) or e.__class__.__name__
 
-    # Move temp file to asset file
-
-    if result:
+    if error is None:
+        if os.path.exists(asset.file_path):
+            service.version_backup(asset)
         try:
             os.rename(temp_file, asset.file_path)
         except Exception:
             nebula.log.traceback()
-            job.fail("Unable to move temp file to asset file")
-            result = False
+            error = "Unable to move temp file to asset file"
 
-    #
-    # Backup the import file
-    #
-
-    backup_dir = os.path.join(
-        import_file.dir_name,
-        "backup",
-    )
-    if not os.path.isdir(backup_dir):
+    if error is not None and os.path.exists(temp_file):
         try:
-            os.makedirs(backup_dir)
-        except Exception:
-            nebula.log.traceback()
-            result = False
+            os.remove(temp_file)
+        except OSError:
+            nebula.log.warning(f"Unable to remove temp file {temp_file}")
 
-    backup_file = os.path.join(
-        backup_dir,
+    #
+    # Move the import file away: backup/ on success, failed/ on failure.
+    # A failed file can be retried by moving it back (or uploading again).
+    #
+
+    target_dir = os.path.join(
+        import_file.dir_name,
+        "failed" if error else "backup",
+    )
+    target_file = os.path.join(
+        target_dir,
         f"{import_file.base_name}.{import_file.ext}",
     )
-    nebula.log.info(f"Moving {import_file} to {backup_file}")
+    nebula.log.info(f"Moving {import_file} to {target_file}")
     try:
-        os.rename(import_file.path, backup_file)
+        os.makedirs(target_dir, exist_ok=True)
+        os.rename(import_file.path, target_file)
     except Exception:
         nebula.log.traceback()
-        result = False
+        if error is None:
+            error = f"Unable to move {import_file.base_name} to {target_dir}"
+
+    if error is not None:
+        if os.path.exists(target_file):
+            create_error(FileObject(target_file), error)
+        else:
+            nebula.log.error(error)
+        job.fail(f"Import failed: {error.splitlines()[0][:200]}")
+        nebula.log.error(f"Import {asset} failed")
+        return False
 
     #
     # Update asset metadata
     #
 
-    if result:
-        # Reload asset
-        asset = nebula.Asset(asset.id, db=db)
-        # Remove technical metadata
-        allkeys = list(asset.meta)
-        for key in allkeys:
-            metatype = nebula.settings.metatypes.get(key)
-            if metatype and (metatype.ns in ["q", "f"]):
-                del asset.meta[key]
-        asset["status"] = ObjectStatus.OFFLINE
-        asset.save()
+    # Reload asset
+    asset = nebula.Asset(asset.id, db=db)
+    # Remove technical metadata
+    allkeys = list(asset.meta)
+    for key in allkeys:
+        metatype = nebula.settings.metatypes.get(key)
+        if metatype and (metatype.ns in ["q", "f"]):
+            del asset.meta[key]
+    asset["status"] = ObjectStatus.OFFLINE
+    asset.save()
 
-        job.done("Import finished")
-        nebula.log.info(f"Import {asset} finished")
-    else:
-        job.fail("Import failed")
-        nebula.log.error(f"Import {asset} failed")
+    job.done("Import finished")
+    nebula.log.info(f"Import {asset} finished")
+    return True

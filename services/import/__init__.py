@@ -59,9 +59,11 @@ class Service(BaseService):
                 continue
 
             path = os.path.join(nebula.storages[import_storage].local_path, import_dir)
-            if not os.path.isdir(path):
+            try:
+                os.makedirs(path, exist_ok=True)
+            except OSError as e:
                 nebula.log.error(
-                    f"Import directory {path} does not exist. "
+                    f"Unable to create import directory {path}: {e}. "
                     f"Skipping import action {title}."
                 )
                 continue
@@ -109,10 +111,8 @@ class Service(BaseService):
 
         db = nebula.DB()
         db.query(
-            f"""
-            SELECT meta FROM assets WHERE
-            meta->>'{action.identifier}' = '{path.base_name}'
-            """
+            "SELECT meta FROM assets WHERE meta->>%s = %s",
+            [action.identifier, path.base_name],
         )
 
         try:
@@ -146,9 +146,6 @@ class Service(BaseService):
             return
 
         nebula.log.info(f"Importing {asset}")
-
-        if os.path.exists(asset.file_path):
-            self.version_backup(asset)
 
         import_asset(self, action, asset, path)
 

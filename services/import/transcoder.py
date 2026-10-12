@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import BaseModel
 
 import nebula
-from nxtools import ffmpeg
+from nxtools.media.ffmpeg import FFMPEG
 
 from .profiles import PROFILES
 
@@ -181,12 +181,12 @@ class ImportTranscoder:
 
         return video_chain, audio_chain, mapping
 
-    def start(self, progress_handler) -> bool:
+    def start(self, progress_handler) -> None:
+        """Transcode the source. Raises an exception with the reason on failure."""
         video_chain, audio_chain, mapping = self.create_filter_chain()
 
         if not mapping:
-            nebula.log.error("No tracks found")
-            return False
+            raise Exception("No tracks found")
 
         cmd = ["-i", self.source_path]
 
@@ -221,6 +221,12 @@ class ImportTranscoder:
         cmd.extend(self.profile["audio_encoding"])
         cmd.append(self.target_path)
 
-        return ffmpeg(
-            *cmd, progress_handler=lambda x: progress_handler(x / self.duration * 100)
-        )
+        ff = FFMPEG(*cmd)
+        nebula.log.debug("Executing", " ".join(ff.cmd))
+        ff.start()
+        ff.wait(progress_handler=lambda x: progress_handler(x / self.duration * 100))
+        if ff.return_code:
+            # error_log holds what ffmpeg wrote after the last progress line
+            raise Exception(
+                ff.error_log.strip() or f"ffmpeg exited with {ff.return_code}"
+            )
