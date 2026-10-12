@@ -142,6 +142,10 @@ class Service(BaseService):
             )
 
     def process(self, asset):
+        # A writer that moved a complete file into place vouches for it with
+        # its size. Taken out first, so any save below drops it; a stale or
+        # wrong value just means the usual completion wait.
+        written = asset.meta.pop("__file/written", None)
         asset_file = FileObject(asset.file_path)
         try:
             file_exists = asset_file.is_reg
@@ -262,10 +266,6 @@ class Service(BaseService):
                     asset["status"] = ObjectStatus.CREATING
                 asset.save()
 
-        # A writer that moved a complete file into place vouches for it with
-        # its size. Consumed on first look; a stale or wrong value just means
-        # the usual wait.
-        written = asset.meta.pop("__file/written", None)
         if (
             asset["status"] == ObjectStatus.CREATING
             and written != asset["file/size"]
