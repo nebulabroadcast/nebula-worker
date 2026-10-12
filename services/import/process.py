@@ -1,19 +1,18 @@
-import os
 import time
+from pathlib import Path
 
 import nebula
 from nebula.db import DB
 from nebula.enum import ObjectStatus
 from nebula.jobs import Job, send_to
 from nebula.objects import Asset
-from nxtools import FileObject
 
 from .common import ImportDefinition, create_error
 from .transcoder import ImportTranscoder
 
 
 def get_import_job(
-    import_file: FileObject,
+    import_file: Path,
     asset: Asset,
     action,
     service,
@@ -40,22 +39,19 @@ def get_import_job(
     return job
 
 
-def ensure_target(file_path: str) -> bool:
+def ensure_target(file_path: Path) -> bool:
     """Ensure that the target file is writable."""
-    # ensure target dir exists
-    target_dir = os.path.split(file_path)[0]
-    if not os.path.isdir(target_dir):
-        try:
-            os.makedirs(target_dir)
-        except Exception:
-            nebula.log.traceback()
-            return False
+    try:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        nebula.log.traceback()
+        return False
 
-    # ensure target file is writable
-    if os.path.exists(file_path):
+    if file_path.exists():
         try:
-            _ = open(file_path, "a")
-        except Exception:
+            with file_path.open("a"):
+                pass
+        except OSError:
             return False
     return True
 
@@ -64,9 +60,10 @@ def import_asset(
     service,
     action: ImportDefinition,
     asset: nebula.Asset,
-    import_file: FileObject,
+    import_file: Path,
 ):
     db = nebula.DB()
+    asset_file = Path(asset.file_path)
 
     nebula.log.info(f"Importing {import_file} to {asset}")
 
@@ -89,25 +86,18 @@ def import_asset(
             return
         job.set_progress(progress, f"Importing {progress:.02f}%")
 
-    if not ensure_target(asset.file_path):
+    if not ensure_target(asset_file):
         job.fail("Unable to create target file")
         return False
 
-    # Get temp file path
-    temp_file = os.path.join(
-        nebula.storages[asset["id_storage"]].local_path,
-        ".nx",
-        "creating",
-        f"{time.time()}.{os.path.split(asset.file_path)[1]}",
-    )
-    # ensure temp file dir exists
-    if not os.path.isdir(os.path.dirname(temp_file)):
-        try:
-            os.makedirs(os.path.dirname(temp_file))
-        except Exception:
-            nebula.log.traceback()
-            job.fail("Unable to create temp file")
-            return False
+    temp_dir = Path(nebula.storages[asset["id_storage"]].local_path, ".nx", "creating")
+    temp_file = temp_dir / f"{time.time()}.{asset_file.name}"
+    try:
+        temp_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        nebula.log.traceback()
+        job.fail("Unable to create temp file")
+        return False
 
     # Transcode. The asset file is touched only after a successful transcode,
     # so a failed import leaves the asset as it was.
@@ -115,7 +105,7 @@ def import_asset(
     error: str | None = None
     try:
         transcoder = ImportTranscoder(
-            import_file.path,
+            import_file,
             temp_file,
             service.profiles[action.profile],
         )
@@ -124,17 +114,17 @@ def import_asset(
         error = str(e) or e.__class__.__name__
 
     if error is None:
-        if os.path.exists(asset.file_path):
+        if asset_file.exists():
             service.version_backup(asset)
         try:
-            os.rename(temp_file, asset.file_path)
-        except Exception:
+            temp_file.rename(asset_file)
+        except OSError:
             nebula.log.traceback()
             error = "Unable to move temp file to asset file"
 
-    if error is not None and os.path.exists(temp_file):
+    if error is not None:
         try:
-            os.remove(temp_file)
+            temp_file.unlink(missing_ok=True)
         except OSError:
             nebula.log.warning(f"Unable to remove temp file {temp_file}")
 
@@ -143,26 +133,20 @@ def import_asset(
     # A failed file can be retried by moving it back (or uploading again).
     #
 
-    target_dir = os.path.join(
-        import_file.dir_name,
-        "failed" if error else "backup",
-    )
-    target_file = os.path.join(
-        target_dir,
-        f"{import_file.base_name}.{import_file.ext}",
-    )
+    target_dir = import_file.parent / ("failed" if error else "backup")
+    target_file = target_dir / import_file.name
     nebula.log.info(f"Moving {import_file} to {target_file}")
     try:
-        os.makedirs(target_dir, exist_ok=True)
-        os.rename(import_file.path, target_file)
-    except Exception:
+        target_dir.mkdir(exist_ok=True)
+        import_file.rename(target_file)
+    except OSError:
         nebula.log.traceback()
         if error is None:
-            error = f"Unable to move {import_file.base_name} to {target_dir}"
+            error = f"Unable to move {import_file.name} to {target_dir}"
 
     if error is not None:
-        if os.path.exists(target_file):
-            create_error(FileObject(target_file), error)
+        if target_file.exists():
+            create_error(target_file, error)
         else:
             nebula.log.error(error)
         job.fail(f"Import failed: {error.splitlines()[0][:200]}")
@@ -183,7 +167,7 @@ def import_asset(
             del asset.meta[key]
     asset["status"] = ObjectStatus.CREATING
     # The file was renamed into place complete: meta needn't wait for it
-    asset["__file/written"] = os.path.getsize(asset.file_path)
+    asset["__file/written"] = asset_file.stat().st_size
     asset.save()
 
     job.done("Import finished")

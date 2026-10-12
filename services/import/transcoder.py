@@ -1,7 +1,8 @@
 import json
-import os
 import subprocess
+import tempfile
 import tomllib
+from collections.abc import Callable
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -9,7 +10,6 @@ from typing import Any
 from pydantic import BaseModel, field_validator
 
 import nebula
-from nxtools.media.ffmpeg import FFMPEG
 
 PROFILES_DIR = Path(__file__).parent / "profiles"
 
@@ -82,9 +82,9 @@ class MediaInfo(BaseModel):
     audio_tracks: list[AudioTrack]
 
 
-def mediainfo(path: str) -> MediaInfo:
-    command = ["mediainfo", "--Output=JSON", path]
-    if not os.path.exists(path):
+def mediainfo(path: Path) -> MediaInfo:
+    command = ["mediainfo", "--Output=JSON", str(path)]
+    if not path.exists():
         raise FileNotFoundError(path)
 
     try:
@@ -131,11 +131,37 @@ def mediainfo(path: str) -> MediaInfo:
     )
 
 
-class ImportTranscoder:
-    source_path: str
-    target_path: str
+def run_ffmpeg(args: list[str], progress_handler: Callable[[float], None]) -> None:
+    """Run ffmpeg, reporting progress as seconds of output written.
 
-    def __init__(self, source_path: str, target_path: str, profile: ImportProfile):
+    Raises an exception with ffmpeg's error output on failure.
+    """
+    cmd = ["ffmpeg", "-hide_banner", "-nostdin", "-nostats", "-loglevel", "error"]
+    cmd.extend(["-progress", "pipe:1", *args])
+    nebula.log.debug("Executing", " ".join(cmd))
+
+    # stderr goes to a file: a full pipe would block ffmpeg while stdout is read
+    with tempfile.TemporaryFile() as stderr:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=stderr, text=True)
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            key, _, value = line.strip().partition("=")
+            if key == "out_time_us" and value.isdigit():
+                progress_handler(int(value) / 1_000_000)
+        proc.wait()
+        if proc.returncode:
+            stderr.seek(0)
+            lines = stderr.read().decode("utf-8", errors="replace").splitlines()
+            # The cause comes first; a broken source can repeat errors a lot
+            error = "\n".join(lines[:50]).strip()
+            raise Exception(error or f"ffmpeg exited with {proc.returncode}")
+
+
+class ImportTranscoder:
+    source_path: Path
+    target_path: Path
+
+    def __init__(self, source_path: Path, target_path: Path, profile: ImportProfile):
         self.source_path = source_path
         self.target_path = target_path
         self.profile = profile
@@ -221,7 +247,7 @@ class ImportTranscoder:
         if not mapping:
             raise Exception("No tracks found")
 
-        cmd = ["-i", self.source_path]
+        cmd = ["-i", str(self.source_path)]
 
         filter_chain = ",".join(video_chain + audio_chain)
         if filter_chain:
@@ -252,13 +278,6 @@ class ImportTranscoder:
         # Audio and output
 
         cmd.extend(self.profile.audio_encoding)
-        cmd.append(self.target_path)
+        cmd.append(str(self.target_path))
 
-        ff = FFMPEG(*cmd)
-        ff.start()
-        ff.wait(progress_handler=lambda x: progress_handler(x / self.duration * 100))
-        if ff.return_code:
-            # error_log holds what ffmpeg wrote after the last progress line
-            raise Exception(
-                ff.error_log.strip() or f"ffmpeg exited with {ff.return_code}"
-            )
+        run_ffmpeg(cmd, lambda x: progress_handler(x / self.duration * 100))
