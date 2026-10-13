@@ -1,15 +1,17 @@
 import json
-import os
 import subprocess
+import tempfile
+import tomllib
+from collections.abc import Callable
 from functools import cached_property
+from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 import nebula
-from nxtools import ffmpeg
 
-from .profiles import PROFILES
+PROFILES_DIR = Path(__file__).parent / "profiles"
 
 
 def guess_aspect(w: float, h: float) -> float:
@@ -34,6 +36,41 @@ class VideoTrack(BaseTrack):
     aspect: float
 
 
+class ImportProfile(BaseModel):
+    """Target format of an import, one profiles/<name>.toml per profile."""
+
+    # "smca": merge several mono audio tracks into one multichannel track
+    audio_layout: str | None = None
+    # Sources matching all keys of any entry are copied, not re-encoded
+    video_fast_import: list[dict[str, Any]] = []
+    # Video options used instead of video_encoding for a fast import
+    video_copy: list[str] = ["-c:v", "copy"]
+    video_encoding: list[str]
+    audio_encoding: list[str]
+
+    @field_validator("video_fast_import")
+    @classmethod
+    def check_fast_import_keys(
+        cls, value: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        for conds in value:
+            if unknown := set(conds) - set(VideoTrack.model_fields):
+                raise ValueError(f"unknown video track fields {sorted(unknown)}")
+        return value
+
+
+def load_profiles() -> dict[str, ImportProfile]:
+    """Load profiles/*.toml. A broken file is logged and skipped."""
+    profiles = {}
+    for path in sorted(PROFILES_DIR.glob("*.toml")):
+        try:
+            with path.open("rb") as f:
+                profiles[path.stem] = ImportProfile(**tomllib.load(f))
+        except Exception as e:
+            nebula.log.error(f"Invalid import profile {path.name}: {e}")
+    return profiles
+
+
 class AudioTrack(BaseTrack):
     channels: int
     sample_rate: int
@@ -45,9 +82,9 @@ class MediaInfo(BaseModel):
     audio_tracks: list[AudioTrack]
 
 
-def mediainfo(path: str) -> MediaInfo:
-    command = ["mediainfo", "--Output=JSON", path]
-    if not os.path.exists(path):
+def mediainfo(path: Path) -> MediaInfo:
+    command = ["mediainfo", "--Output=JSON", str(path)]
+    if not path.exists():
         raise FileNotFoundError(path)
 
     try:
@@ -94,18 +131,46 @@ def mediainfo(path: str) -> MediaInfo:
     )
 
 
-class ImportTranscoder:
-    source_path: str
-    target_path: str
+def run_ffmpeg(args: list[str], progress_handler: Callable[[float], None]) -> None:
+    """Run ffmpeg, reporting progress as seconds of output written.
 
-    def __init__(self, source_path: str, target_path: str, profile_name: str):
+    Raises an exception with ffmpeg's error output on failure.
+    """
+    cmd = ["ffmpeg", "-hide_banner", "-nostdin", "-nostats", "-loglevel", "error"]
+    cmd.extend(["-progress", "pipe:1", *args])
+    nebula.log.debug("Executing", " ".join(cmd))
+
+    # stderr goes to a file: a full pipe would block ffmpeg while stdout is read
+    with tempfile.TemporaryFile() as stderr:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=stderr, text=True)
+        assert proc.stdout is not None
+        try:
+            for line in proc.stdout:
+                key, _, value = line.strip().partition("=")
+                if key == "out_time_us" and value.isdigit():
+                    progress_handler(int(value) / 1_000_000)
+        except BaseException:
+            # Don't leave ffmpeg running if reporting progress fails
+            proc.kill()
+            proc.wait()
+            raise
+        proc.wait()
+        if proc.returncode:
+            stderr.seek(0)
+            lines = stderr.read().decode("utf-8", errors="replace").splitlines()
+            # The cause comes first; a broken source can repeat errors a lot
+            error = "\n".join(lines[:50]).strip()
+            raise Exception(error or f"ffmpeg exited with {proc.returncode}")
+
+
+class ImportTranscoder:
+    source_path: Path
+    target_path: Path
+
+    def __init__(self, source_path: Path, target_path: Path, profile: ImportProfile):
         self.source_path = source_path
         self.target_path = target_path
-        self.profile_name = profile_name
-
-    @property
-    def profile(self) -> dict[str, Any]:
-        return PROFILES[self.profile_name]
+        self.profile = profile
 
     @cached_property
     def meta(self) -> MediaInfo:
@@ -153,7 +218,7 @@ class ImportTranscoder:
             if all(track.channels == 1 for track in self.audio_tracks):
                 # All audio tracks are mono
 
-                if self.profile.get("audio_layout") == "smca":
+                if self.profile.audio_layout == "smca":
                     # merge all mono audio tracks into
                     # a single multi-channel audio track
                     link = ""
@@ -181,14 +246,14 @@ class ImportTranscoder:
 
         return video_chain, audio_chain, mapping
 
-    def start(self, progress_handler) -> bool:
+    def start(self, progress_handler) -> None:
+        """Transcode the source. Raises an exception with the reason on failure."""
         video_chain, audio_chain, mapping = self.create_filter_chain()
 
         if not mapping:
-            nebula.log.error("No tracks found")
-            return False
+            raise Exception("No tracks found")
 
-        cmd = ["-i", self.source_path]
+        cmd = ["-i", str(self.source_path)]
 
         filter_chain = ",".join(video_chain + audio_chain)
         if filter_chain:
@@ -200,8 +265,8 @@ class ImportTranscoder:
         # Check whether we can use fast import
 
         use_fast_import = False
-        if self.profile.get("video_fast_import"):
-            for fast_import_conds in self.profile["video_fast_import"]:
+        if self.profile.video_fast_import:
+            for fast_import_conds in self.profile.video_fast_import:
                 for key, value in fast_import_conds.items():
                     if getattr(self.video_track, key) != value:
                         break
@@ -212,15 +277,13 @@ class ImportTranscoder:
         # Use fast import if possible
 
         if use_fast_import:
-            cmd.extend(["-c:v", "copy"])
+            cmd.extend(self.profile.video_copy)
         else:
-            cmd.extend(self.profile["video_encoding"])
+            cmd.extend(self.profile.video_encoding)
 
         # Audio and output
 
-        cmd.extend(self.profile["audio_encoding"])
-        cmd.append(self.target_path)
+        cmd.extend(self.profile.audio_encoding)
+        cmd.append(str(self.target_path))
 
-        return ffmpeg(
-            *cmd, progress_handler=lambda x: progress_handler(x / self.duration * 100)
-        )
+        run_ffmpeg(cmd, lambda x: progress_handler(x / self.duration * 100))

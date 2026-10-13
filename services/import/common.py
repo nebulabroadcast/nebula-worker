@@ -1,40 +1,21 @@
-import os
+from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 import nebula
-from nxtools import FileObject, get_temp
 
 
-def create_error(import_file: FileObject, message: str) -> None:
-    """Create a sidecar file with the error message for the import file."""
-    dir_name = import_file.dir_name
-    message_path = os.path.join(dir_name, f"{import_file.base_name}.txt")
-
-    if os.path.exists(message_path):
-        original_message = open(message_path).read()
-        if original_message == message:
-            return None
-
+def create_error(import_file: Path, message: str) -> None:
+    """Write the error message to a .txt file beside the import file."""
+    message_path = import_file.with_suffix(".txt")
+    if message_path.exists() and message_path.read_text() == message:
+        return
     nebula.log.error(message)
-    with open(message_path, "w") as f:
-        f.write(message)
-
-
-def temp_file(id_storage, ext):
-    temp_dir = os.path.join(nebula.storages[id_storage].local_path, ".nx", "creating")
-    if not os.path.isdir(temp_dir):
-        try:
-            os.makedirs(temp_dir)
-        except Exception:
-            nebula.log.traceback()
-            return False
-    return get_temp(ext, temp_dir)
+    message_path.write_text(message)
 
 
 class ImportDefinition(BaseModel):
     action_id: int
-    import_dir: str = Field(...)
-    backup_dir: str | None = Field(None)
-    identifier: str = Field("id")
+    import_dir: Path
+    identifier: str = "id"
     profile: str

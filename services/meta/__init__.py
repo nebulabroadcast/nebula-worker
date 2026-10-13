@@ -142,6 +142,10 @@ class Service(BaseService):
             )
 
     def process(self, asset):
+        # A writer that moved a complete file into place vouches for it with
+        # its size. Taken out first, so any save below drops it; a stale or
+        # wrong value just means the usual completion wait.
+        written = asset.meta.pop("__file/written", None)
         asset_file = FileObject(asset.file_path)
         try:
             file_exists = asset_file.is_reg
@@ -264,6 +268,7 @@ class Service(BaseService):
 
         if (
             asset["status"] == ObjectStatus.CREATING
+            and (written is None or written != asset["file/size"])
             and asset["mtime"] + 15 > time.time()
         ):
             nebula.log.debug(f"{asset}: Waiting for completion assurance")

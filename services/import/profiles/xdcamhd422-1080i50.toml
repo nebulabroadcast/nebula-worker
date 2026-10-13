@@ -1,0 +1,47 @@
+# XDCAM HD422 1080i50 (PAL): MPEG-2 4:2:2 50 Mbit/s CBR, top field first,
+# closed GOP 12 (M=3), PCM audio. Intended for .mxf targets.
+
+# "smca": several mono tracks are merged into one multichannel track
+audio_layout = "smca"
+
+video_encoding = [
+    "-r", "25",
+    "-pix_fmt", "yuv422p",
+    "-c:v", "mpeg2video",
+    "-flags", "+ildct+ilme+cgop",
+    "-field_order", "tt",
+    "-top", "1",
+    "-mpv_flags", "+strict_gop",
+    "-sc_threshold", "1000000000",
+    "-color_primaries", "bt709",
+    "-color_trc", "bt709",
+    "-colorspace", "bt709",
+    "-dc", "9",
+    "-intra_vlc", "1",
+    "-non_linear_quant", "1",
+    "-qmin", "1",
+    "-qmax", "3",
+    "-lmin", "1*QP2LAMBDA",
+    "-g", "12",
+    "-bf", "2",
+    "-rc_max_vbv_use", "1",
+    "-rc_min_vbv_use", "1",
+    "-b:v", "50M",
+]
+
+# A copied stream has no bitrate in the MXF header unless it is set here,
+# and without it the file isn't recognised as XDCAM HD422
+video_copy = ["-c:v", "copy", "-b:v", "50M"]
+
+audio_encoding = [
+    "-ar", "48000",
+    "-c:a", "pcm_s16le",
+]
+
+# Sources matching all keys of any entry are copied, not re-encoded.
+# Keys are video track fields: commercial_name, width, height, fps, aspect.
+[[video_fast_import]]
+commercial_name = "XDCAM HD422"
+fps = 25
+width = 1920
+height = 1080
