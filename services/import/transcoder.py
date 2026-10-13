@@ -144,10 +144,16 @@ def run_ffmpeg(args: list[str], progress_handler: Callable[[float], None]) -> No
     with tempfile.TemporaryFile() as stderr:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=stderr, text=True)
         assert proc.stdout is not None
-        for line in proc.stdout:
-            key, _, value = line.strip().partition("=")
-            if key == "out_time_us" and value.isdigit():
-                progress_handler(int(value) / 1_000_000)
+        try:
+            for line in proc.stdout:
+                key, _, value = line.strip().partition("=")
+                if key == "out_time_us" and value.isdigit():
+                    progress_handler(int(value) / 1_000_000)
+        except BaseException:
+            # Don't leave ffmpeg running if reporting progress fails
+            proc.kill()
+            proc.wait()
+            raise
         proc.wait()
         if proc.returncode:
             stderr.seek(0)

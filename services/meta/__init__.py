@@ -268,7 +268,7 @@ class Service(BaseService):
 
         if (
             asset["status"] == ObjectStatus.CREATING
-            and written != asset["file/size"]
+            and (written is None or written != asset["file/size"])
             and asset["mtime"] + 15 > time.time()
         ):
             nebula.log.debug(f"{asset}: Waiting for completion assurance")

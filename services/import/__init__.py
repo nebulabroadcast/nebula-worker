@@ -23,7 +23,12 @@ class Service(BaseService):
     def on_init(self):
         self.actions: list[ImportDefinition] = []
         self.exts: list[str] = FileTypes.exts_by_type(ContentType.VIDEO)
+        # Size of each file seen in the previous pass: a file is imported
+        # once its size is the same in two passes
         self.filesizes: dict[Path, int] = {}
+        # Files that couldn't be moved out of the import directory, with
+        # their (size, mtime): not imported again until they change
+        self.left_in_place: dict[Path, tuple[int, int]] = {}
         self.profiles: dict[str, ImportProfile] = load_profiles()
         nebula.log.debug(f"Import profiles: {', '.join(self.profiles) or 'none'}")
 
@@ -86,6 +91,7 @@ class Service(BaseService):
             nebula.log.debug(f"Import action {title} added.")
 
     def on_main(self):
+        seen: set[Path] = set()
         for action in self.actions:
             if not action.import_dir.is_dir():
                 continue
@@ -97,22 +103,40 @@ class Service(BaseService):
                     or import_file.suffix[1:].lower() not in self.exts
                 ):
                     continue
+                seen.add(import_file)
                 try:
                     with import_file.open("rb") as f:
                         f.seek(0, 2)
                         fsize = f.tell()
+                    mtime = import_file.stat().st_mtime_ns
                 except OSError:
                     nebula.log.debug(f"Import file {import_file.name} is busy.")
                     continue
+
+                if self.left_in_place.get(import_file) == (fsize, mtime):
+                    continue
+                self.left_in_place.pop(import_file, None)
 
                 if self.filesizes.get(import_file) != fsize:
                     self.filesizes[import_file] = fsize
                     nebula.log.debug(f"New file '{import_file.name}' detected")
                     continue
 
-                self.import_file(action, import_file)
+                # A file of the same name arriving later starts over
+                del self.filesizes[import_file]
+                if self.import_file(action, import_file) is False:
+                    self.left_in_place[import_file] = (fsize, mtime)
 
-    def import_file(self, action: ImportDefinition, path: Path):
+        # Forget files that are gone
+        self.filesizes = {k: v for k, v in self.filesizes.items() if k in seen}
+        self.left_in_place = {k: v for k, v in self.left_in_place.items() if k in seen}
+
+    def import_file(self, action: ImportDefinition, path: Path) -> bool | None:
+        """Import the file if it matches an asset.
+
+        Returns False if it was imported (or failed) but couldn't be moved
+        out of the import directory, None if it wasn't imported.
+        """
         # check whether the file matches the ident in the DB
 
         db = nebula.DB()
@@ -125,15 +149,15 @@ class Service(BaseService):
             asset = nebula.Asset(meta=db.fetchall()[0][0])
         except IndexError:
             create_error(path, f"Unexpected file {path.name}")
-            return
+            return None
 
         if not (asset["id_storage"] and asset["path"]):
             create_error(path, f"{asset} has no target path.")
-            return
+            return None
 
         if asset["media_type"] != MediaType.FILE:
             create_error(path, f"{asset} is not a file.")
-            return
+            return None
 
         # Check whether there is unfinished job in the db
         statuses = [JobState.PENDING, JobState.IN_PROGRESS]
@@ -149,21 +173,23 @@ class Service(BaseService):
 
         if db.fetchall():
             nebula.log.trace(f"{asset} is already being processed.")
-            return
+            return None
 
         nebula.log.info(f"Importing {asset}")
 
-        import_asset(self, action, asset, path)
+        moved = import_asset(self, action, asset, path)
 
         # Clean up error files whose import file is gone
         stems = {f.stem for f in action.import_dir.iterdir() if f.suffix != ".txt"}
         for error_file in action.import_dir.glob("*.txt"):
             if error_file.stem not in stems:
                 error_file.unlink(missing_ok=True)
+        return None if moved else False
 
-    def version_backup(self, asset: nebula.Asset):
+    def version_backup(self, asset: nebula.Asset) -> Path | None:
+        """Move the asset file to .nx/versions/. Returns the backup path."""
         if asset.id is None:
-            return
+            return None
         source = Path(asset.file_path)
         target_dir = Path(
             nebula.storages[asset["id_storage"]].local_path,
@@ -172,10 +198,12 @@ class Service(BaseService):
             f"{asset.id // 1000:04d}",
             str(asset.id),
         )
-        target = target_dir / f"{asset.id}{asset['mtime']}{source.suffix}"
+        target = target_dir / f"{asset.id}-{int(asset['mtime'])}{source.suffix}"
         try:
             target_dir.mkdir(parents=True, exist_ok=True)
             source.rename(target)
         except OSError:
             nebula.log.traceback()
             nebula.log.warning(f"Unable to create version backup of {asset}")
+            return None
+        return target
