@@ -4,6 +4,10 @@
 # "smca": several mono tracks are merged into one multichannel track
 audio_layout = "smca"
 
+# Output frame: other sizes are scaled to fit (display aspect kept) and padded
+width = 1920
+height = 1080
+
 video_encoding = [
     "-r", "30000/1001",
     "-pix_fmt", "yuv422p",
