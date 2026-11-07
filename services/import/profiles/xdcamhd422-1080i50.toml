@@ -4,6 +4,10 @@
 # "smca": several mono tracks are merged into one multichannel track
 audio_layout = "smca"
 
+# Frames are flagged top field first; the encoder writes the field order
+# from the frames (ffmpeg 9 removed the -top option that did it before)
+video_filters = ["setfield=tff"]
+
 # Output frame: other sizes are scaled to fit (display aspect kept) and padded
 width = 1920
 height = 1080
@@ -14,7 +18,6 @@ video_encoding = [
     "-c:v", "mpeg2video",
     "-flags", "+ildct+ilme+cgop",
     "-field_order", "tt",
-    "-top", "1",
     "-mpv_flags", "+strict_gop",
     "-sc_threshold", "1000000000",
     "-color_primaries", "bt709",

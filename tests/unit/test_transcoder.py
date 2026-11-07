@@ -74,3 +74,44 @@ def test_rotated_source_size(tmp_path: Path) -> None:
     video = transcoder.mediainfo(rotated).video_track
     assert (video.width, video.height) == (1080, 1920)
     assert video.aspect == pytest.approx(9 / 16, abs=0.01)
+
+
+def transcoder_for(width: int, height: int, aspect: float):
+    profile = transcoder.load_profiles()["xdcamhd422-1080i50"]
+    t = transcoder.ImportTranscoder(Path("in.mp4"), Path("out.mxf"), profile)
+    track = transcoder.VideoTrack(
+        commercial_name=None,
+        faucet="0:0",
+        index=0,
+        width=width,
+        height=height,
+        fps=25,
+        aspect=aspect,
+    )
+    t.__dict__["meta"] = transcoder.MediaInfo(  # no mediainfo run
+        duration=1, video_track=track, audio_tracks=[]
+    )
+    return t
+
+
+def test_profile_filters_on_matching_source() -> None:
+    # Nothing to scale, but the frames must still be flagged top field first
+    video_chain, _, mapping = transcoder_for(1920, 1080, 16 / 9).create_filter_chain(
+        fast_import=False
+    )
+    assert video_chain == ["[0:0]setfield=tff[video]"]
+    assert mapping == ["[video]"]
+
+
+def test_profile_filters_follow_the_fit() -> None:
+    video_chain, _, _ = transcoder_for(720, 576, 4 / 3).create_filter_chain(False)
+    assert video_chain[0].endswith(",setfield=tff[video]")
+    assert video_chain[0].startswith("[0:0]fieldorder=tff,scale=1440:1080")
+
+
+def test_fast_import_is_not_filtered() -> None:
+    video_chain, _, mapping = transcoder_for(1920, 1080, 16 / 9).create_filter_chain(
+        fast_import=True
+    )
+    assert video_chain == []
+    assert mapping == ["0:0"]

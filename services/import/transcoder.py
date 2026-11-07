@@ -36,6 +36,10 @@ class ImportProfile(BaseModel):
     width: int | None = None
     height: int | None = None
 
+    # Video filters applied on every re-encode (not on a fast import), after
+    # the frame size fit, e.g. ["setfield=tff"] to mark the field order
+    video_filters: list[str] = []
+
     # "smca": merge several mono audio tracks into one multichannel track
     audio_layout: str | None = None
     # Sources matching all keys of any entry are copied, not re-encoded
@@ -237,10 +241,12 @@ class ImportTranscoder:
         if video_track:
             video_filters: list[str] = []
             # A copied stream can't be filtered
-            if not fast_import and self.profile.width and self.profile.height:
-                video_filters = fit_frame(
-                    video_track, self.profile.width, self.profile.height
-                )
+            if not fast_import:
+                if self.profile.width and self.profile.height:
+                    video_filters = fit_frame(
+                        video_track, self.profile.width, self.profile.height
+                    )
+                video_filters += self.profile.video_filters
 
             if video_filters:
                 video_chain.append(
