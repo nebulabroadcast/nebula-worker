@@ -98,13 +98,10 @@ class Service(BaseService):
         job_start_time = time.time()
 
         for id_task, task in enumerate(tasks):
-            try:
-                using = task.attrib["mode"]
-                if using not in available_encoders:
-                    continue
-            except KeyError:
+            using = task.attrib.get("mode")
+            if using not in available_encoders:
                 self.job.fail(
-                    f"Wrong encoder type specified for task {id_task}", critical=True
+                    f"Unknown encoder {using!r} in task {id_task + 1}", critical=True
                 )
                 return
 
@@ -125,10 +122,12 @@ class Service(BaseService):
                 self.encoder.wait(self.progress_handler)
             except Exception as e:
                 self.job.fail(f"Failed to encode task {id_task + 1}: {e}")
+                self.encoder.remove_temp_files()
                 nebula.log.traceback()
                 return
 
             if self.encoder.aborted:
+                self.encoder.remove_temp_files()
                 return
 
             nebula.log.debug(f"Finalizing task {id_task + 1} of {len(tasks)}")
@@ -136,6 +135,7 @@ class Service(BaseService):
                 self.encoder.finalize()
             except Exception as e:
                 self.job.fail(f"Failed to finalize task {id_task + 1}: {e}")
+                self.encoder.remove_temp_files()
                 return
 
             job_params = self.encoder.params

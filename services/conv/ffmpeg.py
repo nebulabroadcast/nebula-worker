@@ -204,14 +204,8 @@ class NebulaFFMPEG(BaseEncoder):
             return
         assert self.proc.stderr
 
-        if self.aborted:
-            for temp_path in self.files:
-                try:
-                    os.remove(temp_path)
-                except Exception:
-                    pass
-
-        if self.proc.returncode > 0:
+        # != 0: a process killed by a signal has a negative code
+        if self.proc.returncode != 0:
             last_lines = self.error_log.splitlines()[-10:]
             nebula.log.debug("FFMPEG error log:")
             for line in last_lines:
