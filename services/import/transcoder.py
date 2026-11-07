@@ -39,6 +39,12 @@ class VideoTrack(BaseTrack):
 class ImportProfile(BaseModel):
     """Target format of an import, one profiles/<name>.toml per profile."""
 
+    # Output frame size in square pixels. Other sources are scaled to fit,
+    # keeping their display aspect, and padded (letter/pillarbox).
+    # Unset: the source size is kept.
+    width: int | None = None
+    height: int | None = None
+
     # "smca": merge several mono audio tracks into one multichannel track
     audio_layout: str | None = None
     # Sources matching all keys of any entry are copied, not re-encoded
@@ -69,6 +75,33 @@ def load_profiles() -> dict[str, ImportProfile]:
         except Exception as e:
             nebula.log.error(f"Invalid import profile {path.name}: {e}")
     return profiles
+
+
+def fit_frame(track: VideoTrack, width: int, height: int) -> list[str]:
+    """Filters fitting the video into width x height (empty if it already is).
+
+    Uses the display aspect, so anamorphic sources (e.g. 1440x1080 16:9)
+    come out right. The result is padded to the full frame.
+    """
+    aspect = track.aspect or (track.width / track.height)
+    if (track.width, track.height) == (width, height) and abs(
+        aspect - width / height
+    ) < 0.01:
+        return []
+    # Multiples of 4: an odd pad offset would swap fields of 4:2:2 interlaced video
+    if aspect > width / height:
+        w, h = width, round(width / aspect / 4) * 4
+    else:
+        w, h = round(height * aspect / 4) * 4, height
+    return [
+        # -top 1 in the profiles only labels fields; this actually reorders
+        # bottom-field-first sources (no-op for progressive or tff)
+        "fieldorder=tff",
+        # interl=-1: interlaced frames are scaled per field
+        f"scale={w}:{h}:interl=-1",
+        "setsar=1",
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
+    ]
 
 
 class AudioTrack(BaseTrack):
@@ -104,14 +137,19 @@ def mediainfo(path: Path) -> MediaInfo:
             except (KeyError, ValueError):
                 raise Exception(f"Invalid source duration of {path}") from None
         elif track["@type"] == "Video":
+            width, height = int(track["Width"]), int(track["Height"])
+            aspect = float(track["DisplayAspectRatio"])
+            # mediainfo reports the stored size, ffmpeg filters the rotated picture
+            if round(float(track.get("Rotation", 0))) % 180 == 90:
+                width, height, aspect = height, width, 1 / aspect
             video_track = VideoTrack(
                 commercial_name=track.get("Format_Commercial_IfAny"),
                 faucet=f"0:{index}",
                 index=index,
-                width=track["Width"],
-                height=track["Height"],
+                width=width,
+                height=height,
                 fps=track["FrameRate"],
-                aspect=track["DisplayAspectRatio"],
+                aspect=aspect,
             )
         elif track["@type"] == "Audio":
             audio_track = AudioTrack(
@@ -188,7 +226,17 @@ class ImportTranscoder:
     def audio_tracks(self) -> list[AudioTrack]:
         return self.meta.audio_tracks
 
-    def create_filter_chain(self) -> tuple[list[str], list[str], list[str]]:
+    @property
+    def use_fast_import(self) -> bool:
+        """Whether the source video matches any fast import entry."""
+        return any(
+            all(getattr(self.video_track, key) == value for key, value in conds.items())
+            for conds in self.profile.video_fast_import
+        )
+
+    def create_filter_chain(
+        self, fast_import: bool
+    ) -> tuple[list[str], list[str], list[str]]:
         video_chain: list[str] = []
         audio_chain: list[str] = []
         mapping: list[str] = []
@@ -197,8 +245,11 @@ class ImportTranscoder:
         video_track = self.video_track
         if video_track:
             video_filters: list[str] = []
-
-            # TODO: Video filtering
+            # A copied stream can't be filtered
+            if not fast_import and self.profile.width and self.profile.height:
+                video_filters = fit_frame(
+                    video_track, self.profile.width, self.profile.height
+                )
 
             if video_filters:
                 video_chain.append(
@@ -248,33 +299,20 @@ class ImportTranscoder:
 
     def start(self, progress_handler) -> None:
         """Transcode the source. Raises an exception with the reason on failure."""
-        video_chain, audio_chain, mapping = self.create_filter_chain()
+        use_fast_import = self.use_fast_import
+        video_chain, audio_chain, mapping = self.create_filter_chain(use_fast_import)
 
         if not mapping:
             raise Exception("No tracks found")
 
         cmd = ["-i", str(self.source_path)]
 
-        filter_chain = ",".join(video_chain + audio_chain)
+        filter_chain = ";".join(video_chain + audio_chain)
         if filter_chain:
             cmd.extend(["-filter_complex", filter_chain])
 
         for track in mapping:
             cmd.extend(["-map", track])
-
-        # Check whether we can use fast import
-
-        use_fast_import = False
-        if self.profile.video_fast_import:
-            for fast_import_conds in self.profile.video_fast_import:
-                for key, value in fast_import_conds.items():
-                    if getattr(self.video_track, key) != value:
-                        break
-                else:
-                    use_fast_import = True
-                    break
-
-        # Use fast import if possible
 
         if use_fast_import:
             cmd.extend(self.profile.video_copy)

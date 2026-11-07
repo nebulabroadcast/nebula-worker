@@ -16,6 +16,11 @@ if TYPE_CHECKING:
     from xml.etree.ElementTree import Element
 
 
+def xml_flag(settings: "Element", name: str) -> bool:
+    # bool("FALSE") is True: compare the text instead
+    return settings.attrib.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
 class Watchfolder:
     id_storage: int
     rel_path: str
@@ -28,11 +33,9 @@ class Watchfolder:
         self.id_storage = int(settings.attrib["id_storage"])
         self.rel_path = settings.attrib["path"]
         self.id_folder = int(settings.attrib.get("id_folder", 12))
-        self.recursive = bool(settings.attrib.get("recursive", False))
-        self.hidden = bool(settings.attrib.get("hidden", False))
-        self.case_sensitive_exts = bool(
-            settings.attrib.get("case_sensitive_exts", False)
-        )
+        self.recursive = xml_flag(settings, "recursive")
+        self.hidden = xml_flag(settings, "hidden")
+        self.case_sensitive_exts = xml_flag(settings, "case_sensitive_exts")
 
     @property
     def storage_path(self):
