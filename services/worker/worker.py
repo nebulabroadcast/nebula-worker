@@ -58,12 +58,12 @@ class Service(BaseService):
 
     def load_from_settings(self):
         exec_init = self.settings.find("init")
-        if exec_init and exec_init.text:
+        if exec_init is not None and exec_init.text:
             self.exec_init = exec_init.text
             exec(self.exec_init)
 
         exec_main = self.settings.find("main")
-        if exec_main and exec_main.text:
+        if exec_main is not None and exec_main.text:
             self.exec_main = exec_main.text
         return True
 

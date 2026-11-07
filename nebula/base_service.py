@@ -2,6 +2,8 @@ import sys
 import time
 from xml.etree.ElementTree import Element
 
+import psycopg2
+
 from nebula.db import DB
 from nebula.enum import ServiceState
 from nebula.log import log
@@ -10,6 +12,7 @@ from nebula.log import log
 class BaseService:
     id_service: int
     settings: Element
+    _heartbeat_db: DB | None = None
 
     def __init__(self, id_service, settings: Element | None = None):
         log.debug(f"Initializing service ID {id_service}")
@@ -64,20 +67,27 @@ class BaseService:
         sys.exit(0)
 
     def heartbeat(self):
-        db = DB()
-        db.query("SELECT state FROM services WHERE id=%s", [self.id_service])
+        # One connection for all heartbeats; a lost one is reopened next beat,
+        # so a database restart doesn't take the service (and playout) down
+        if self._heartbeat_db is None:
+            self._heartbeat_db = DB()
+        db = self._heartbeat_db
         try:
-            state = db.fetchall()[0][0]
-        except IndexError:
-            state = ServiceState.KILL
-        else:
-            if state == 0:
-                state = 1
-            db.query(
-                "UPDATE services SET last_seen=%s, state=%s WHERE id=%s",
-                [time.time(), state, self.id_service],
-            )
-            db.commit()
+            db.query("SELECT state FROM services WHERE id=%s", [self.id_service])
+            rows = db.fetchall()
+            state = rows[0][0] if rows else ServiceState.KILL
+            if rows:
+                if state == 0:
+                    state = 1
+                db.query(
+                    "UPDATE services SET last_seen=%s, state=%s WHERE id=%s",
+                    [time.time(), state, self.id_service],
+                )
+                db.commit()
+        except psycopg2.Error as e:
+            log.warning(f"Heartbeat failed: {e}")
+            self._heartbeat_db = None
+            return
 
         if state in [ServiceState.STOPPED, ServiceState.STOPPING, ServiceState.KILL]:
             self.shutdown()

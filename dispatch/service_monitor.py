@@ -14,10 +14,6 @@ class ServiceMonitor(BaseAgent):
     def on_init(self):
         self.services = {}
         db = nebula.DB()
-        db.query("SELECT id, pid FROM services WHERE host=%s", [HOSTNAME])
-        for _, pid in db.fetchall():
-            if pid:
-                self.kill_service(pid)
         db.query("UPDATE services SET state = 0 WHERE host=%s", [HOSTNAME])
         db.commit()
 

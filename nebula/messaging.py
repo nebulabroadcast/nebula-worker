@@ -40,9 +40,6 @@ class Messaging:
 
     def send_thread(self):
         while True:
-            if self.queue.empty():
-                time.sleep(0.01)
-                continue
             qm, qd = self.queue.get()
             self.send(qm, **qd)
 
