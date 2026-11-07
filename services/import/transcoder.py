@@ -88,11 +88,15 @@ def fit_frame(track: VideoTrack, width: int, height: int) -> list[str]:
         aspect - width / height
     ) < 0.01:
         return []
+    # Multiples of 4: an odd pad offset would swap fields of 4:2:2 interlaced video
     if aspect > width / height:
-        w, h = width, round(width / aspect / 2) * 2
+        w, h = width, round(width / aspect / 4) * 4
     else:
-        w, h = round(height * aspect / 2) * 2, height
+        w, h = round(height * aspect / 4) * 4, height
     return [
+        # -top 1 in the profiles only labels fields; this actually reorders
+        # bottom-field-first sources (no-op for progressive or tff)
+        "fieldorder=tff",
         # interl=-1: interlaced frames are scaled per field
         f"scale={w}:{h}:interl=-1",
         "setsar=1",
@@ -133,14 +137,19 @@ def mediainfo(path: Path) -> MediaInfo:
             except (KeyError, ValueError):
                 raise Exception(f"Invalid source duration of {path}") from None
         elif track["@type"] == "Video":
+            width, height = int(track["Width"]), int(track["Height"])
+            aspect = float(track["DisplayAspectRatio"])
+            # mediainfo reports the stored size, ffmpeg filters the rotated picture
+            if round(float(track.get("Rotation", 0))) % 180 == 90:
+                width, height, aspect = height, width, 1 / aspect
             video_track = VideoTrack(
                 commercial_name=track.get("Format_Commercial_IfAny"),
                 faucet=f"0:{index}",
                 index=index,
-                width=track["Width"],
-                height=track["Height"],
+                width=width,
+                height=height,
                 fps=track["FrameRate"],
-                aspect=track["DisplayAspectRatio"],
+                aspect=aspect,
             )
         elif track["@type"] == "Audio":
             audio_track = AudioTrack(
