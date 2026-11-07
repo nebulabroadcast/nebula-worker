@@ -164,7 +164,7 @@ class Job:
         return False
 
     def set_progress(self, progress: float, message: str | None = None) -> None:
-        db = DB()
+        db = self.db
         progress = round(progress, 2)
 
         if message is None:
@@ -425,12 +425,11 @@ def get_job(
             run_on_text = (run_on_tag.text or "").strip()
             if not run_on_text:
                 continue
-            try:
-                value = [int(r.strip()) for r in run_on_text.split(",") if r.isdigit()]
-            except ValueError:
-                log.error(f"Invalid run_on value for action {action}: {run_on_text}")
-                continue
-            run_on_services.extend(value)
+            for r in run_on_text.split(","):
+                if r.strip().isdigit():
+                    run_on_services.append(int(r))
+                else:
+                    log.error(f"Invalid run_on value for action {action.title}: {r!r}")
 
         if run_on_services and (id_service not in run_on_services):
             continue
@@ -439,15 +438,16 @@ def get_job(
         # Pre-script filtering
         #
 
+        pre_failed = False
         for pre in action.settings.findall("pre"):
             if pre.text:
                 try:
                     exec(pre.text)
                 except Exception:
-                    log.traceback()
-                    continue
-        if not action:
-            log.warning(f"Unable to get job. No such action ID {id_action}")
+                    log.traceback(f"Pre-script failed, not starting {job}")
+                    pre_failed = True
+                    break
+        if pre_failed:
             continue
 
         if status != JobState.RESTART.value and action.should_skip(asset):
@@ -473,25 +473,25 @@ def get_job(
                 log.warning(f"Unable to take {job}")
                 continue
         else:
+            # Status stays pending, so start_if is checked again on the next pass
             db.query(
                 """
-                UPDATE jobs SET
-                    message='Starting',
-                    status=1,
-                    progress=0,
-                    start_time=%s
-                WHERE id=%s
+                UPDATE jobs SET message='Waiting'
+                WHERE id=%s AND message IS DISTINCT FROM 'Waiting'
+                RETURNING id
                 """,
-                [now, id_job],
+                [id_job],
             )
-            messaging.send(
-                "job_progress",
-                id=id_job,
-                id_asset=id_asset,
-                id_action=id_action,
-                status=status,
-                progress=0,
-                message="Starting",
-            )
+            changed = db.fetchall()
             db.commit()
+            if changed:
+                messaging.send(
+                    "job_progress",
+                    id=id_job,
+                    id_asset=id_asset,
+                    id_action=id_action,
+                    status=status,
+                    progress=0,
+                    message="Waiting",
+                )
     return None
