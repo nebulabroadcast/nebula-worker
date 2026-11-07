@@ -37,17 +37,15 @@ def ffprobe(input_file: str | FileObject, verbose: bool = False) -> dict[str, An
         logging.error(f"ffprobe: file '{input_file}' does not exist")
         return {}
     cmd = ["ffprobe", "-show_format", "-show_streams", "-print_format", "json", path]
-    open(os.devnull, "w")
     if verbose:
         logging.debug(f"Executing {' '.join(cmd)}")
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    assert proc.stdout is not None
-    res = proc.stdout.read().decode("utf-8")
-    proc.wait()
+    # run() reads stdout and stderr together: reading one pipe after the
+    # other blocks ffprobe once the other one fills up
+    proc = subprocess.run(cmd, capture_output=True)
+    res = proc.stdout.decode("utf-8")
     if proc.returncode:
         if verbose:
-            assert proc.stderr is not None
-            error_msg = indent(proc.stderr.read())
+            error_msg = indent(proc.stderr.decode("utf-8", errors="replace"))
             logging.error(f"Unable to read media file {input_file}\n\n{error_msg}\n\n")
         else:
             logging.warning(f"Unable to read media file {input_file}")
