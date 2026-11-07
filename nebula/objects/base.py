@@ -55,6 +55,59 @@ def create_ft_index(meta):
     return ft
 
 
+class Meta(dict[str, Any]):
+    """Object metadata that remembers which keys changed since the last save.
+
+    save() writes only these keys, so concurrent writers (other services, the
+    backend) don't overwrite each other's changes with a stale copy.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.changed: set[str] = set()
+        self.deleted: set[str] = set()
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        super().__setitem__(key, value)
+        self.changed.add(key)
+        self.deleted.discard(key)
+
+    def __delitem__(self, key: str) -> None:
+        super().__delitem__(key)
+        self.deleted.add(key)
+        self.changed.discard(key)
+
+    def pop(self, key: str, *default: Any) -> Any:
+        if key in self:
+            self.deleted.add(key)
+            self.changed.discard(key)
+        return super().pop(key, *default)
+
+    def update(self, *args: Any, **kwargs: Any) -> None:
+        for key, value in dict(*args, **kwargs).items():
+            self[key] = value
+
+    def setdefault(self, key: str, default: Any = None) -> Any:
+        if key not in self:
+            self[key] = default
+        return self[key]
+
+    def popitem(self) -> tuple[str, Any]:
+        key, value = super().popitem()
+        self.deleted.add(key)
+        self.changed.discard(key)
+        return key, value
+
+    def clear(self) -> None:
+        self.deleted |= set(self)
+        self.changed.clear()
+        super().clear()
+
+    def saved(self) -> None:
+        self.changed.clear()
+        self.deleted.clear()
+
+
 class BaseObject:
     """Base object properties."""
 
@@ -72,7 +125,6 @@ class BaseObject:
 
         self.text_changed = self.meta_changed = False
         self.is_new = True
-        self.meta = {}
         meta = kwargs.get("meta", {})
         if id:
             assert isinstance(id, int), f"{self.object_type} ID must be integer"
@@ -80,8 +132,7 @@ class BaseObject:
             f"Unable to load {self.object_type}. Meta must not be 'None'"
         )
         assert hasattr(meta, "keys"), "Incorrect meta!"
-        for key in meta:
-            self.meta[key] = meta[key]
+        self.meta = Meta({key: meta[key] for key in meta})
         if "id" in self.meta:
             self.is_new = False
         elif not self.meta:
@@ -226,6 +277,7 @@ class BaseObject:
             self.update_ft_index(is_new)
         if kwargs.get("commit", True):
             self.db.commit()
+        self.meta.saved()
         self.text_changed = self.meta_changed = False
         self.is_new = False
         if kwargs.get("notify", True):
@@ -247,9 +299,9 @@ class BaseObject:
         self.db.commit()
 
     def load(self, id):
-        self.db.query(f"SELECT meta FROM {self.table_name} WHERE id = {id}")
+        self.db.query(f"SELECT meta FROM {self.table_name} WHERE id = %s", [id])
         try:
-            self.meta = self.db.fetchall()[0][0]
+            self.meta = Meta(self.db.fetchall()[0][0])
         except IndexError:
             log.error(
                 f"Unable to load {self.__class__.__name__}"
@@ -294,16 +346,23 @@ class BaseObject:
     def _update(self, **kwargs):
         _ = kwargs
         assert self.id, "Unable to update object, no ID"
-        cols: list[str] = ["meta"]
-        vals: list[Any] = [json.dumps(self.meta)]
-
+        changed = self.meta.changed
+        deleted = self.meta.deleted
+        if not (changed or deleted):
+            return
+        # Only the changed keys: the row may have newer values of the others
+        sets = ["meta = (meta - %s::text[]) || %s::jsonb"]
+        vals: list[Any] = [
+            sorted(deleted),
+            json.dumps({key: self.meta[key] for key in changed}),
+        ]
+        # Columns are copies of meta keys and change with them
         for col in self.db_cols:
-            cols.append(col)
-            vals.append(self[col])
+            if col in changed or col in deleted:
+                sets.append(f"{col} = %s")
+                vals.append(self[col])
 
-        query = "UPDATE {} SET {} WHERE id=%s".format(
-            self.table_name, ", ".join([key + "=%s" for key in cols])
-        )
+        query = f"UPDATE {self.table_name} SET {', '.join(sets)} WHERE id = %s"
         self.db.query(query, vals + [self.id])
 
     def update_ft_index(self, is_new=False):
