@@ -22,6 +22,11 @@ def test_get_item_event_unknown_item(db: nebula.DB) -> None:
     assert get_item_event(-1, db=db) is None
 
 
-def test_bin_refresh_without_bins(db: nebula.DB) -> None:
-    # Used to build "IN ()", a syntax error
-    bin_refresh([0], db=db)
+def test_bin_refresh_bin_without_events(db: nebula.DB) -> None:
+    # The events query runs with the bin ids as an array parameter
+    new_bin = nebula.Bin(db=db)
+    new_bin.save(notify=False)
+    try:
+        bin_refresh([new_bin.id, 0], db=db)
+    finally:
+        new_bin.delete()

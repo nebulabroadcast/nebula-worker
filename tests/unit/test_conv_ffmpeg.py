@@ -87,3 +87,14 @@ def test_finished_encode_is_moved(encoder: NebulaFFMPEG, tmp_path: Path) -> None
     encoder.finalize()
     assert (tmp_path / "out.mp4").stat().st_size > 0
     assert not encoder.files or not any(os.path.exists(t) for t in encoder.files)
+
+
+def test_kill_stops_running_encoder(encoder: NebulaFFMPEG) -> None:
+    # conv calls kill() when wait() fails, e.g. progress reporting raised
+    start(encoder)
+    with pytest.raises(RuntimeError):
+        encoder.wait(lambda progress: (_ for _ in ()).throw(RuntimeError("db down")))
+    assert encoder.proc and encoder.proc.poll() is None  # still encoding
+    encoder.kill()
+    assert encoder.proc.poll() is not None
+    encoder.remove_temp_files()

@@ -4,18 +4,18 @@ Each test makes its own asset and actions (ids from SCRATCH_ACTION up) and
 removes them afterwards, so they can run against a database in use.
 """
 
-import os
 from collections.abc import Callable, Iterator
 
 import psycopg
 import pytest
 
+from nebula.db import connection_kwargs
+
 # Before anything queries: DB() waits forever for a database that isn't there
-_url = os.environ.get("NEBULA_POSTGRES", "postgres://nebula:nebula@postgres/nebula")
 try:
-    psycopg.connect(_url, connect_timeout=3).close()
+    psycopg.connect(**connection_kwargs(), connect_timeout=3).close()
 except psycopg.OperationalError as e:
-    pytest.exit(f"Database not available at {_url}: {e}", returncode=3)
+    pytest.exit(f"Database not available: {e}", returncode=3)
 
 import nebula  # noqa: E402
 from nebula.enum import ObjectStatus  # noqa: E402
@@ -51,6 +51,9 @@ def make_action(db: nebula.DB) -> Iterator[Callable[[str], int]]:
 
     def make(body: str, service_type: str = "conv") -> int:
         id_action = SCRATCH_ACTION + len(created)
+        # Left over by an interrupted run?
+        db.query("DELETE FROM jobs WHERE id_action = %s", [id_action])
+        db.query("DELETE FROM actions WHERE id = %s", [id_action])
         db.query(
             "INSERT INTO actions (id, title, service_type, settings)"
             " VALUES (%s, 'integration test', %s, %s)",

@@ -6,6 +6,7 @@ __all__ = [
     "User",
     "DB",
     "db",
+    "load_settings",
     "config",
     "log",
     "LogLevel",
@@ -28,7 +29,7 @@ from nebula.db import DB
 from nebula.log import LogLevel, log
 from nebula.messaging import messaging
 from nebula.objects import Asset, Bin, Event, Item, User
-from nebula.settings import settings
+from nebula.settings import load_settings, settings
 from nebula.storages import storages
 
 #

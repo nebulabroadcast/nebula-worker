@@ -54,6 +54,12 @@ class BaseEncoder:
 
     def finalize(self) -> None: ...
 
+    def kill(self) -> None:
+        """Stop the encoder process at once, if it is still running."""
+        if self.proc and self.proc.poll() is None:
+            self.proc.kill()
+            self.proc.wait()
+
     def remove_temp_files(self) -> None:
         for temp_path in self.files:
             try:

@@ -27,6 +27,7 @@ class Action:
         self.id = id_action
         self.title = title
         self.settings = settings
+        self._errors: dict[str, str] = {}
         try:
             create_if = settings.findall("create_if")[0]
         except IndexError:
@@ -48,6 +49,13 @@ class Action:
         else:
             self.skip_if = proc_cond(skip_if.text)
 
+    def _log_error(self, condition: str, error: Exception) -> None:
+        # Conditions run on every pass of every service: log a change only
+        message = f"Error evaluating {condition} for action {self.id}: {error}"
+        if self._errors.get(condition) != message:
+            self._errors[condition] = message
+            log.error(message)
+
     @property
     def created_key(self) -> str:
         return f"job_created/{self.id}"
@@ -59,7 +67,7 @@ class Action:
         try:
             return eval(self.create_if, {"__builtins__": None}, safe_globals)
         except Exception as e:
-            log.error(f"Error evaluating create_if for action {self.id}: {e}")
+            self._log_error("create_if", e)
             return False
 
     def should_start(self, asset: Asset) -> bool:
@@ -69,7 +77,7 @@ class Action:
         try:
             return eval(self.start_if, {"__builtins__": None}, safe_globals)
         except Exception as e:
-            log.error(f"Error evaluating start_if for action {self.id}: {e}")
+            self._log_error("start_if", e)
             return False
 
     def should_skip(self, asset: Asset) -> bool:
@@ -79,7 +87,7 @@ class Action:
         try:
             return eval(self.skip_if, {"__builtins__": None}, safe_globals)
         except Exception as e:
-            log.error(f"Error evaluating skip_if for action {self.id}: {e}")
+            self._log_error("skip_if", e)
             return False
 
 

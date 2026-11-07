@@ -1,7 +1,6 @@
 """The database adapter (spec 009): DB() compatibility and the new API."""
 
 import gc
-import os
 import threading
 from collections.abc import Iterator
 
@@ -38,8 +37,7 @@ def values() -> list[str]:
 
 
 def terminate(pid: int) -> None:
-    url = os.environ.get("NEBULA_POSTGRES", "postgres://nebula:nebula@postgres/nebula")
-    with psycopg.connect(url, autocommit=True) as conn:
+    with psycopg.connect(**nebula_db.connection_kwargs(), autocommit=True) as conn:
         conn.execute("SELECT pg_terminate_backend(%s)", [pid])
 
 
@@ -241,3 +239,61 @@ def test_db_handle_joins_transaction() -> None:
         db.query(f"INSERT INTO {TABLE} (value) VALUES ('b')")
         db.commit()
     assert values() == ["b"]
+
+
+def test_write_inside_select_is_kept() -> None:
+    # Tagged SELECT, but it writes: must not be rolled back
+    db = DB()
+    db.query(
+        f"WITH i AS (INSERT INTO {TABLE} (value) VALUES ('a') RETURNING id)"
+        " SELECT id FROM i"
+    )
+    assert db.fetchone()
+    db.commit()
+    assert values() == ["a"]
+
+
+def test_cursor_outlives_its_handle() -> None:
+    # psycopg2: a cursor kept its connection alive after the handle was gone
+    cur = DB().cur
+    gc.collect()
+    cur.execute("SELECT %s IN %s", [1, (1, 2)])  # psycopg2-style binding
+    assert cur.fetchone() == (True,)
+    assert in_use() == 0  # a connection of its own, not the pool's
+
+
+def test_cursor_sees_uncommitted_write() -> None:
+    db = DB()
+    db.query(f"INSERT INTO {TABLE} (value) VALUES ('a')")
+    db.cur.execute(f"SELECT value FROM {TABLE}")
+    assert db.cur.fetchall() == [("a",)]
+    db.conn.commit()
+    assert values() == ["a"]
+    db.close()
+
+
+def test_nested_tuples() -> None:
+    db = DB()
+    db.query("SELECT (1, 'x') IN %s", [((1, "x"), (2, "y"))])
+    assert db.fetchone() == (True,)
+
+
+def test_set_does_not_leak_to_other_handles() -> None:
+    db = DB()
+    db.query("SET statement_timeout = 1234")
+    db.commit()
+    other = DB()
+    other.query("SHOW statement_timeout")
+    assert other.fetchone() != ("1234ms",)
+
+
+def test_new_api_autocommits() -> None:
+    with nebula.db.acquire():
+        nebula.db.execute(f"INSERT INTO {TABLE} (value) VALUES ('a')")
+        assert values() == ["a"]  # visible before the block ends
+
+
+def test_select_read_in_autocommit() -> None:
+    db = DB()
+    db.query("SELECT now() = statement_timestamp()")  # no surrounding transaction
+    assert db.fetchone() == (True,)

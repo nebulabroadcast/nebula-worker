@@ -53,7 +53,7 @@ def test_failing_pre_script_blocks_job(
     id_action = make_action("<pre>raise ValueError('not now')</pre>")
     id_job = send_to(asset.id, id_action, db=db)
     assert get_job(901, [id_action], db=db) is None
-    assert job_row(db, id_job)[:2] == (0, None)
+    assert job_row(db, id_job) == (0, None, "Waiting: pre-script: not now")
 
 
 def test_set_progress(
@@ -66,3 +66,12 @@ def test_set_progress(
     job.set_progress(42, "halfway")
     db.query("SELECT progress, message FROM jobs WHERE id = %s", [job.id])
     assert db.fetchall()[0] == (42, "halfway")
+
+
+def test_run_on_odd_digits(
+    db: nebula.DB, asset: nebula.Asset, make_action: Callable[..., int]
+) -> None:
+    # "²".isdigit() is True but int("²") fails: must not crash get_job
+    id_action = make_action("<run_on>901,²</run_on>")
+    send_to(asset.id, id_action, db=db)
+    assert get_job(901, [id_action], db=db)

@@ -1,3 +1,4 @@
+import copy
 import json
 import pprint
 import time
@@ -56,56 +57,40 @@ def create_ft_index(meta):
 
 
 class Meta(dict[str, Any]):
-    """Object metadata that remembers which keys changed since the last save.
+    """Object metadata that knows what changed since it was loaded or saved.
 
-    save() writes only these keys, so concurrent writers (other services, the
-    backend) don't overwrite each other's changes with a stale copy.
+    save() writes only those keys, so concurrent writers (other services, the
+    backend) don't overwrite each other's changes with a stale copy. Changes
+    are found by comparing with the values as loaded, so every way of
+    changing the dict counts: item assignment, update(), |=, and changes
+    inside a nested value (dict or list).
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.changed: set[str] = set()
-        self.deleted: set[str] = set()
-
-    def __setitem__(self, key: str, value: Any) -> None:
-        super().__setitem__(key, value)
-        self.changed.add(key)
-        self.deleted.discard(key)
-
-    def __delitem__(self, key: str) -> None:
-        super().__delitem__(key)
-        self.deleted.add(key)
-        self.changed.discard(key)
-
-    def pop(self, key: str, *default: Any) -> Any:
-        if key in self:
-            self.deleted.add(key)
-            self.changed.discard(key)
-        return super().pop(key, *default)
-
-    def update(self, *args: Any, **kwargs: Any) -> None:
-        for key, value in dict(*args, **kwargs).items():
-            self[key] = value
-
-    def setdefault(self, key: str, default: Any = None) -> Any:
-        if key not in self:
-            self[key] = default
-        return self[key]
-
-    def popitem(self) -> tuple[str, Any]:
-        key, value = super().popitem()
-        self.deleted.add(key)
-        self.changed.discard(key)
-        return key, value
-
-    def clear(self) -> None:
-        self.deleted |= set(self)
-        self.changed.clear()
-        super().clear()
+        self.saved()
 
     def saved(self) -> None:
-        self.changed.clear()
-        self.deleted.clear()
+        """Take the current values as the stored ones."""
+        # Nested values are copied: a change inside them must be seen
+        self._stored = {
+            key: copy.deepcopy(value) if isinstance(value, dict | list) else value
+            for key, value in self.items()
+        }
+
+    @property
+    def changed(self) -> set[str]:
+        stored = self._stored
+        return {
+            key for key, value in self.items() if stored.get(key, _MISSING) != value
+        }
+
+    @property
+    def deleted(self) -> set[str]:
+        return self._stored.keys() - self.keys()
+
+
+_MISSING = object()
 
 
 class BaseObject:
@@ -146,6 +131,25 @@ class BaseObject:
         for key in self.defaults:
             if key not in self.meta:
                 self.meta[key] = self.defaults[key]
+
+    @property
+    def meta(self) -> Meta:
+        return self._meta
+
+    @meta.setter
+    def meta(self, value: dict[str, Any]) -> None:
+        """Replace the metadata.
+
+        A plain dict (e.g. from a plugin) keeps what was stored, so save()
+        writes the difference: changed keys and deletions.
+        """
+        if isinstance(value, Meta):
+            self._meta = value
+            return
+        new = Meta(value)
+        if (old := getattr(self, "_meta", None)) is not None:
+            new._stored = old._stored
+        self._meta = new
 
     #
     # Database access

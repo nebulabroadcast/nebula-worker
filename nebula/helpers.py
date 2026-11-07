@@ -259,7 +259,7 @@ def bin_refresh(
             c.id = e.id_channel AND
             e.id_magic = ANY(%s)
         """,
-        [[b for b in bins if b]],
+        [bins],
     )
     for (meta,) in db.fetchall():
         event = Event(meta=meta, db=db)

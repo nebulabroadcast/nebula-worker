@@ -61,11 +61,15 @@ class Service(BaseService):
             return
 
         stat = self.job.get_status()
+        # Set aborted here, not only in stop(): the process may already have
+        # exited, and then stop() doesn't, and the job would end as done
         if stat == JobState.RESTART:
+            self.encoder.aborted = True
             self.encoder.stop()
             self.job.restart()
             return
         elif stat == JobState.ABORTED:
+            self.encoder.aborted = True
             self.encoder.stop()
             self.job.abort()
             return
@@ -118,25 +122,28 @@ class Service(BaseService):
 
             nebula.log.info(f"Starting task {id_task + 1} of {len(tasks)}")
             try:
-                self.encoder.start()
-                self.encoder.wait(self.progress_handler)
-            except Exception as e:
-                self.job.fail(f"Failed to encode task {id_task + 1}: {e}")
-                self.encoder.remove_temp_files()
-                nebula.log.traceback()
-                return
+                try:
+                    self.encoder.start()
+                    self.encoder.wait(self.progress_handler)
+                except Exception as e:
+                    self.job.fail(f"Failed to encode task {id_task + 1}: {e}")
+                    # e.g. progress reporting failed: don't leave ffmpeg running
+                    self.encoder.kill()
+                    nebula.log.traceback()
+                    return
 
-            if self.encoder.aborted:
-                self.encoder.remove_temp_files()
-                return
+                if self.encoder.aborted:
+                    return
 
-            nebula.log.debug(f"Finalizing task {id_task + 1} of {len(tasks)}")
-            try:
-                self.encoder.finalize()
-            except Exception as e:
-                self.job.fail(f"Failed to finalize task {id_task + 1}: {e}")
+                nebula.log.debug(f"Finalizing task {id_task + 1} of {len(tasks)}")
+                try:
+                    self.encoder.finalize()
+                except Exception as e:
+                    self.job.fail(f"Failed to finalize task {id_task + 1}: {e}")
+                    return
+            finally:
+                # Whatever finalize() didn't move into place
                 self.encoder.remove_temp_files()
-                return
 
             job_params = self.encoder.params
 

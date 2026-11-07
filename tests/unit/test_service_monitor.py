@@ -3,6 +3,9 @@ import subprocess
 import time
 from types import SimpleNamespace
 
+import pytest
+
+import nebula
 from dispatch.service_monitor import ServiceMonitor
 
 
@@ -34,3 +37,39 @@ def test_kill_finished_or_unknown_service() -> None:
     monitor = SimpleNamespace(services={7: [proc, "test"]})
     ServiceMonitor.kill_service(monitor, 7)  # type: ignore[arg-type]
     ServiceMonitor.kill_service(monitor, 8)  # type: ignore[arg-type]
+
+
+class FakeDB:
+    def query(self, *args: object) -> None:
+        pass
+
+    def fetchall(self) -> list:
+        return []
+
+    def commit(self) -> None:
+        pass
+
+
+def test_children_of_exited_service_are_killed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A service that exits by itself (crash) leaves its ffmpeg running
+    monkeypatch.setattr(nebula, "DB", FakeDB)
+    proc = subprocess.Popen(["sh", "-c", "sleep 60 & exit 0"], start_new_session=True)
+    proc.wait(timeout=5)
+    assert group_alive(proc.pid)  # the orphaned sleep
+    monitor = SimpleNamespace(services={7: [proc, "test"]})
+    ServiceMonitor.main(monitor)  # type: ignore[arg-type]
+    assert 7 not in monitor.services
+    for _ in range(50):
+        if not group_alive(proc.pid):
+            break
+        time.sleep(0.1)
+    assert not group_alive(proc.pid), "orphan survived"
+
+
+def test_missing_mount_binary_is_a_failed_mount() -> None:
+    from dispatch.storage_monitor import exec_mount
+
+    with pytest.raises(RuntimeError):
+        exec_mount(["/nonexistent/mount.cifs", "//x/y", "/tmp/z"])

@@ -30,6 +30,12 @@ def run_service(service):
             break
         except (SystemExit):
             break
+        except nebula.db.OperationalError as e:
+            # Database unreachable: wait it out. Exiting would stop playout
+            # (the play service runs the engine in-process).
+            nebula.log.warning(f"Database unavailable: {e}")
+            time.sleep(5)
+            continue
         except Exception:
             nebula.log.traceback()
             time.sleep(2)

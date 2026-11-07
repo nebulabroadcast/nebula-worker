@@ -359,7 +359,8 @@ def get_job(
             settings,
             priority,
             retries,
-            status
+            status,
+            message
         FROM jobs
         WHERE
             status IN (0,3,5)
@@ -379,11 +380,13 @@ def get_job(
         priority,
         retries,
         status,
+        message,
     ) in db.fetchall():
-        asset = Asset(id_asset, db=db)
         action = actions[id_action]
         job = Job(id_job, db=db)
-        job._asset = asset
+        job._action = action
+        job.status = JobState(status)
+        job.message = message
         job._settings = settings
         job.priority = priority
         job.retries = retries
@@ -426,7 +429,8 @@ def get_job(
             if not run_on_text:
                 continue
             for r in run_on_text.split(","):
-                if r.strip().isdigit():
+                # isdecimal, not isdigit: int("²") fails
+                if r.strip().isdecimal():
                     run_on_services.append(int(r))
                 else:
                     log.error(f"Invalid run_on value for action {action.title}: {r!r}")
@@ -434,20 +438,25 @@ def get_job(
         if run_on_services and (id_service not in run_on_services):
             continue
 
+        # Loaded only now: the checks above don't need it
+        asset = Asset(id_asset, db=db)
+        job._asset = asset
+
         #
         # Pre-script filtering
         #
 
-        pre_failed = False
+        waiting: str | None = None
         for pre in action.settings.findall("pre"):
             if pre.text:
                 try:
                     exec(pre.text)
-                except Exception:
-                    log.traceback(f"Pre-script failed, not starting {job}")
-                    pre_failed = True
+                except Exception as e:
+                    waiting = f"Waiting: pre-script: {e}"[:200]
                     break
-        if pre_failed:
+        if waiting:
+            if wait(db, job, waiting):
+                log.traceback(f"Pre-script failed, not starting {job}")
             continue
 
         if status != JobState.RESTART.value and action.should_skip(asset):
@@ -473,25 +482,34 @@ def get_job(
                 log.warning(f"Unable to take {job}")
                 continue
         else:
-            # Status stays pending, so start_if is checked again on the next pass
-            db.query(
-                """
-                UPDATE jobs SET message='Waiting'
-                WHERE id=%s AND message IS DISTINCT FROM 'Waiting'
-                RETURNING id
-                """,
-                [id_job],
-            )
-            changed = db.fetchall()
-            db.commit()
-            if changed:
-                messaging.send(
-                    "job_progress",
-                    id=id_job,
-                    id_asset=id_asset,
-                    id_action=id_action,
-                    status=status,
-                    progress=0,
-                    message="Waiting",
-                )
+            wait(db, job, "Waiting")
     return None
+
+
+def wait(db: DB, job: Job, message: str) -> bool:
+    """Show why a job doesn't start. It stays pending and is checked again
+    on the next pass. Returns True when the message changed (log it then,
+    not on every pass of every service)."""
+    if getattr(job, "message", None) == message:
+        return False  # already shown: no UPDATE per pass
+    db.query(
+        """
+        UPDATE jobs SET message = %s
+        WHERE id = %s AND message IS DISTINCT FROM %s
+        RETURNING id
+        """,
+        [message, job.id, message],
+    )
+    changed = bool(db.fetchall())
+    db.commit()
+    if changed:
+        messaging.send(
+            "job_progress",
+            id=job.id,
+            id_asset=job.id_asset,
+            id_action=job.id_action,
+            status=job.status,
+            progress=0,
+            message=message,
+        )
+    return changed

@@ -29,3 +29,29 @@ def test_saved_resets() -> None:
     assert m.deleted == {"a"}
     m.saved()
     assert not m.changed and not m.deleted
+
+
+def test_changes_that_bypass_item_assignment() -> None:
+    m = Meta({"a": 1, "tracks": [{"ch": 2}], "status": {"x": 1}})
+    m |= {"b": 2}
+    dict.update(m, c=3)  # what a plugin might do
+    m["tracks"].append({"ch": 1})  # in place, nested
+    m["status"]["x"] = 2
+    assert m.changed == {"b", "c", "tracks", "status"}
+
+
+def test_same_value_is_no_change() -> None:
+    m = Meta({"a": 1, "tracks": [1, 2]})
+    m["a"] = 1
+    m["tracks"] = [1, 2]
+    assert not m.changed and not m.deleted
+
+
+def test_assigning_a_plain_dict_keeps_what_was_stored() -> None:
+    from nebula.objects import Asset
+
+    asset = Asset(meta={"id": 1, "title": "a", "genre": "b", "media_type": 0})
+    asset.meta = {"id": 1, "title": "new", "media_type": 0, "content_type": 0}
+    assert isinstance(asset.meta, Meta)
+    assert asset.meta.changed == {"title", "content_type"}
+    assert asset.meta.deleted == {"genre"}

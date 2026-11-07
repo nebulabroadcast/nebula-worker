@@ -150,7 +150,8 @@ class NebulaFFMPEG(BaseEncoder):
         nebula.log.info(f"Executing {' '.join(cmd)}")
         self.proc = subprocess.Popen(
             cmd,
-            stdout=subprocess.PIPE,
+            # Nothing reads stdout: a pipe would fill and block ffmpeg
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
 

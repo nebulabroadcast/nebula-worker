@@ -10,7 +10,10 @@ from nebula.storages import Storage
 
 def exec_mount(cmd: list[str]) -> None:
     # No shell: options (passwords) may contain any character
-    proc = subprocess.run(cmd, capture_output=True)
+    try:
+        proc = subprocess.run(cmd, capture_output=True)
+    except OSError as e:  # e.g. mount.cifs not installed
+        raise RuntimeError(f"Mount failed: {e}") from e
     if proc.returncode != 0:
         raise RuntimeError(
             f"Mount failed with return code {proc.returncode}"

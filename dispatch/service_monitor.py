@@ -80,6 +80,11 @@ class ServiceMonitor(BaseAgent):
                 continue
             del self.services[id_service]
             nebula.log.warning(f"Service ID {id_service} ({title}) terminated")
+            # Its ffmpeg etc. may outlive it; the group exists while they run
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
             db.query("UPDATE services SET state=0 WHERE id = %s", [id_service])
             db.commit()
 

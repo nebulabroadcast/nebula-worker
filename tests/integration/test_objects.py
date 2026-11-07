@@ -47,3 +47,17 @@ def test_save_without_changes_writes_nothing(
     nebula.Asset(asset.id, db=db).save(set_mtime=False, notify=False)
     db.query("SELECT meta FROM assets WHERE id = %s", [asset.id])
     assert db.fetchall()[0][0] == before
+
+
+def test_nested_change_is_saved(db: nebula.DB, asset: nebula.Asset) -> None:
+    asset.meta["test/list"] = [1]
+    asset.save(notify=False)
+    stale = nebula.Asset(asset.id, db=nebula.DB())
+    other = nebula.Asset(asset.id, db=nebula.DB())
+    other["title"] = "other"
+    other.save(notify=False)
+    stale.meta["test/list"].append(2)  # in place
+    stale.save(notify=False)
+    fresh = nebula.Asset(asset.id, db=db)
+    assert fresh.meta["test/list"] == [1, 2]
+    assert fresh["title"] == "other"
