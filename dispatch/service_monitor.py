@@ -1,4 +1,5 @@
 import os
+import signal
 import socket
 import subprocess
 import time
@@ -20,7 +21,7 @@ class ServiceMonitor(BaseAgent):
     def on_shutdown(self):
         services = self.services.keys()
         for id_service in services:
-            self.kill_service(id_service=id_service)
+            self.kill_service(id_service)
 
     @property
     def running_services(self):
@@ -66,7 +67,7 @@ class ServiceMonitor(BaseAgent):
 
             elif state == ServiceState.KILL:  # Kill service
                 if id in self.services.keys():
-                    self.kill_service(self.services[id][0].pid)
+                    self.kill_service(id)
 
         #
         # Real service state
@@ -110,23 +111,22 @@ class ServiceMonitor(BaseAgent):
         nebula.log.info(f"Starting service ID {id_service} ({title})")
 
         self.services[id_service] = [
-            subprocess.Popen(proc_cmd, cwd=nebula.config.nebula_root),
+            # Own process group, so killpg also stops its ffmpeg etc.
+            subprocess.Popen(
+                proc_cmd, cwd=nebula.config.nebula_root, start_new_session=True
+            ),
             title,
         ]
 
     def stop_service(self, id_service, title, db=False):
         nebula.log.info(f"Stopping service ID {id_service} ({title})")
 
-    def kill_service(self, pid=False, id_service=False):
-        if id_service in self.services:
-            pid = self.services[id_service][0].pid
-        if pid == os.getpid() or pid == 0:
+    def kill_service(self, id_service: int) -> None:
+        proc, title = self.services.get(id_service, (None, None))
+        if proc is None or proc.poll() is not None:
             return
-        nebula.log.info(f"Attempting to kill PID {pid}")
-        os.system(
-            os.path.join(
-                nebula.config.nebula_root,
-                "support",
-                f"kill_tree.sh {pid}",
-            )
-        )
+        nebula.log.info(f"Killing service ID {id_service} ({title}), PID {proc.pid}")
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
