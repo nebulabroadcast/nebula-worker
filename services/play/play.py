@@ -319,7 +319,7 @@ class Service(BaseService):
         for plugin in self.plugins:
             if not plugin.manifest.slots:
                 continue
-            result.append(plugin.manifest.dict())
+            result.append(plugin.manifest.model_dump())
         return {"plugins": result}
 
     def plugin_exec(self, **kwargs):

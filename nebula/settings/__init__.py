@@ -88,6 +88,6 @@ def get_server_settings() -> ServerSettings:
 
 def load_settings():
     new_settings = get_server_settings()
-    for key in new_settings.dict().keys():
-        if key in settings.dict().keys():
+    for key in new_settings.model_dump().keys():
+        if key in settings.model_dump().keys():
             setattr(settings, key, getattr(new_settings, key))

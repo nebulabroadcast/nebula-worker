@@ -14,15 +14,6 @@ import nebula
 PROFILES_DIR = Path(__file__).parent / "profiles"
 
 
-def guess_aspect(w: float, h: float) -> float:
-    if 0 in [w, h]:
-        return 0
-    valid_aspects = [(16, 9), (4, 3), (2.35, 1), (5, 4), (1, 1)]
-    ratio = w / h
-    n, d = min(valid_aspects, key=lambda x: abs((x[0] / x[1]) - ratio))
-    return n / d
-
-
 class BaseTrack(BaseModel):
     faucet: str
     index: int
