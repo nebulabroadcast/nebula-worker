@@ -11,8 +11,6 @@ from dispatch.storage_monitor import StorageMonitor
 if TYPE_CHECKING:
     from dispatch.agents import BaseAgent
 
-# from dispatch.system_monitor import SystemMonitor
-
 orig_dir = os.getcwd()
 if orig_dir != "/opt/nebula":
     os.chdir("/opt/nebula")
@@ -24,7 +22,6 @@ class NebulaDispatch:
     agent_list: dict[str, type["BaseAgent"]] = {
         "storage-monitor": StorageMonitor,
         "service-monitor": ServiceMonitor,
-        #        "system-monitor": SystemMonitor,
     }
 
     def __init__(self) -> None:

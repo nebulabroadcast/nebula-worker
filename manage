@@ -57,6 +57,10 @@ if __name__ == "__main__":
     except ValueError:
         nebula.log.critical("Service ID must be integer")
 
+    # Before the first query: the connection pool takes its name from it
+    # (pg_stat_activity application_name "nebula-worker:service-<id>")
+    nebula.log.user = f"service-{id_service}"
+
     db = nebula.DB()
     db.query(
         """

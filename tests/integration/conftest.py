@@ -4,13 +4,22 @@ Each test makes its own asset and actions (ids from SCRATCH_ACTION up) and
 removes them afterwards, so they can run against a database in use.
 """
 
+import os
 from collections.abc import Callable, Iterator
 
+import psycopg
 import pytest
 
-import nebula
-from nebula.enum import ObjectStatus
-from nebula.jobs.actions import actions
+# Before anything queries: DB() waits forever for a database that isn't there
+_url = os.environ.get("NEBULA_POSTGRES", "postgres://nebula:nebula@postgres/nebula")
+try:
+    psycopg.connect(_url, connect_timeout=3).close()
+except psycopg.OperationalError as e:
+    pytest.exit(f"Database not available at {_url}: {e}", returncode=3)
+
+import nebula  # noqa: E402
+from nebula.enum import ObjectStatus  # noqa: E402
+from nebula.jobs.actions import actions  # noqa: E402
 
 SCRATCH_ACTION = 990
 

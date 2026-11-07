@@ -2,9 +2,8 @@ import sys
 import time
 from xml.etree.ElementTree import Element
 
-import psycopg2
-
 from nebula.db import DB
+from nebula.db import Error as DBError
 from nebula.enum import ServiceState
 from nebula.log import log
 
@@ -12,7 +11,6 @@ from nebula.log import log
 class BaseService:
     id_service: int
     settings: Element
-    _heartbeat_db: DB | None = None
 
     def __init__(self, id_service, settings: Element | None = None):
         log.debug(f"Initializing service ID {id_service}")
@@ -67,11 +65,9 @@ class BaseService:
         sys.exit(0)
 
     def heartbeat(self):
-        # One connection for all heartbeats; a lost one is reopened next beat,
-        # so a database restart doesn't take the service (and playout) down
-        if self._heartbeat_db is None:
-            self._heartbeat_db = DB()
-        db = self._heartbeat_db
+        # A failed beat is skipped, not fatal: a database restart must not
+        # take the service (and playout) down. The pool reconnects.
+        db = DB()
         try:
             db.query("SELECT state FROM services WHERE id=%s", [self.id_service])
             rows = db.fetchall()
@@ -84,9 +80,8 @@ class BaseService:
                     [time.time(), state, self.id_service],
                 )
                 db.commit()
-        except psycopg2.Error as e:
+        except DBError as e:
             log.warning(f"Heartbeat failed: {e}")
-            self._heartbeat_db = None
             return
 
         if state in [ServiceState.STOPPED, ServiceState.STOPPING, ServiceState.KILL]:

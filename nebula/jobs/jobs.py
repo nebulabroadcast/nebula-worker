@@ -363,12 +363,12 @@ def get_job(
         FROM jobs
         WHERE
             status IN (0,3,5)
-            AND id_action IN %s
+            AND id_action = ANY(%s)
             AND id_service IS NULL
             AND retries < %s
             ORDER BY priority DESC, creation_time DESC
         """
-    db.query(q, [tuple(action_ids), MAX_RETRIES])
+    db.query(q, [action_ids, MAX_RETRIES])
 
     for (
         id_job,

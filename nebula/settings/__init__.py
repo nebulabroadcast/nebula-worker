@@ -1,4 +1,5 @@
-from typing import Any
+import threading
+from typing import Any, cast
 
 from nebula.config import config
 from nebula.db import DB
@@ -13,7 +14,28 @@ from nebula.settings.models import (
     ViewSettings,
 )
 
-settings = ServerSettings()
+_settings = ServerSettings()
+_loaded = False
+_load_lock = threading.Lock()
+
+
+class _LazySettings:
+    """Loads settings from the database on first use.
+
+    `import nebula` doesn't touch the database; everything else uses
+    `settings` as before (it forwards to the loaded ServerSettings).
+    """
+
+    def __getattr__(self, name: str) -> Any:
+        if not _loaded:
+            load_settings()
+        return getattr(_settings, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        setattr(_settings, name, value)
+
+
+settings = cast(ServerSettings, _LazySettings())
 
 
 #
@@ -86,8 +108,11 @@ def get_server_settings() -> ServerSettings:
     return ServerSettings(**result)
 
 
-def load_settings():
-    new_settings = get_server_settings()
-    for key in new_settings.model_dump().keys():
-        if key in settings.model_dump().keys():
-            setattr(settings, key, getattr(new_settings, key))
+def load_settings() -> None:
+    """Load (or reload) settings from the database."""
+    global _loaded
+    with _load_lock:
+        new_settings = get_server_settings()
+        for key in type(new_settings).model_fields:
+            setattr(_settings, key, getattr(new_settings, key))
+        _loaded = True
