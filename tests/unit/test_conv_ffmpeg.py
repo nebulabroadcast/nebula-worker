@@ -98,3 +98,61 @@ def test_kill_stops_running_encoder(encoder: NebulaFFMPEG) -> None:
     encoder.kill()
     assert encoder.proc.poll() is not None
     encoder.remove_temp_files()
+
+
+def configured(task: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list:
+    """ffmpeg arguments for a task; configure() doesn't read the source."""
+    storage = SimpleNamespace(is_writable=True, local_path=str(tmp_path))
+    monkeypatch.setattr(ffmpeg, "storages", {1: storage})
+    monkeypatch.setattr(common, "storages", {1: storage})
+    asset = FakeAsset(duration=10, title="x")
+    asset.file_path = "in.mp4"
+    enc = NebulaFFMPEG(asset, fromstring(task), {})  # type: ignore[arg-type]
+    enc.configure()
+    return enc.ffparams
+
+
+def test_paramset_params_like_top_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Values on their own indented line used to raise IndentationError in a
+    # paramset; ss goes before -i (input seeking) in both places
+    args = configured(
+        """
+        <task mode="ffmpeg">
+            <param name="r">
+                25
+            </param>
+            <paramset condition="asset['title'] == 'x'">
+                <param name="vf">
+                    "scale=640:360"
+                </param>
+                <param name="ss">5</param>
+                <param name="an"></param>
+            </paramset>
+            <output storage="1">"out.mp4"</output>
+        </task>
+        """,
+        tmp_path,
+        monkeypatch,
+    )
+    assert args[:5] == ["-y", "-ss", "5", "-i", "in.mp4"]
+    assert args[5:-1] == ["-r", "25", "-vf", "scale=640:360", "-an"]
+
+
+def test_paramset_condition_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    args = configured(
+        """
+        <task mode="ffmpeg">
+            <paramset condition="asset['title'] == 'y'">
+                <param name="vf">"scale=640:360"</param>
+            </paramset>
+            <output storage="1">"out.mp4"</output>
+        </task>
+        """,
+        tmp_path,
+        monkeypatch,
+    )
+    assert "-vf" not in args
