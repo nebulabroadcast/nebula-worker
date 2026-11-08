@@ -4,40 +4,22 @@ import importlib
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 import nebula
 from nebula.enum import JobState, MediaType, ObjectStatus
-from nebula.storages import Storages
+from tests.integration.conftest import STORAGE, clip
 
 importer = importlib.import_module("services.import")  # "import" is a keyword
 common = importlib.import_module("services.import.common")
 transcoder = importlib.import_module("services.import.transcoder")
 
-STORAGE = 97  # not configured on the stack: patched to a temp dir
-
-
-@pytest.fixture
-def storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    original = Storages.__getitem__
-
-    def getitem(self: Storages, id_storage: int) -> object:
-        if id_storage == STORAGE:
-            return SimpleNamespace(
-                id=STORAGE, local_path=str(tmp_path), protocol="local"
-            )
-        return original(self, id_storage)
-
-    monkeypatch.setattr(Storages, "__getitem__", getitem)
-    (tmp_path / "import").mkdir()
-    (tmp_path / "media").mkdir()
-    return tmp_path
-
 
 @pytest.fixture
 def service(make_action: Callable[..., int], storage: Path):
+    (storage / "import").mkdir()
+    (storage / "media").mkdir()
     # Without on_init: it reads every import action of the stack
     svc = object.__new__(importer.Service)
     svc.id_service = 9999
@@ -60,13 +42,9 @@ def target(asset: nebula.Asset, storage: Path) -> nebula.Asset:
     return asset
 
 
-def clip(path: Path, size: str = "1280x720") -> Path:
-    subprocess.run(
-        ["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", f"testsrc=s={size}:d=1"]
-        + ["-f", "lavfi", "-i", "sine=d=1:r=48000", "-shortest", str(path)],
-        check=True,
-    )
-    return path
+def av_clip(path: Path) -> Path:
+    sine = ("-f", "lavfi", "-i", "sine=d=1:r=48000", "-shortest")
+    return clip(path, "testsrc=s=1280x720:d=1", *sine)
 
 
 def job_of(asset: nebula.Asset, id_action: int) -> dict:
@@ -80,7 +58,7 @@ def job_of(asset: nebula.Asset, id_action: int) -> dict:
 
 
 def test_successful_import(service, target: nebula.Asset, storage: Path) -> None:
-    source = clip(storage / "import" / f"{target.id}.mp4")
+    source = av_clip(storage / "import" / f"{target.id}.mp4")
     assert service.import_file(service.action, source) is None
 
     fresh = nebula.Asset(target.id, db=nebula.DB())
@@ -125,7 +103,7 @@ def test_failed_import_keeps_asset_file(
 
 
 def test_unexpected_file_is_left_with_error(service, storage: Path) -> None:
-    source = clip(storage / "import" / "no-such-asset.mp4")
+    source = av_clip(storage / "import" / "no-such-asset.mp4")
     assert service.import_file(service.action, source) is None
     assert source.exists()
     assert "Unexpected file" in (storage / "import" / "no-such-asset.txt").read_text()

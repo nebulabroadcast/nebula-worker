@@ -1,9 +1,7 @@
 """The meta service turning assets online/offline from their files."""
 
-import subprocess
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from pathlib import Path
-from types import SimpleNamespace
 from xml.etree.ElementTree import fromstring
 
 import pytest
@@ -11,52 +9,20 @@ import pytest
 import nebula
 from nebula.enum import JobState, MediaType, ObjectStatus
 from nebula.jobs import Job, get_job, send_to
-from nebula.storages import Storages
+from services.meta import Service
+from tests.integration.conftest import STORAGE, clip
 
-STORAGE = 97  # not configured on the stack: patched to a temp dir
-
-
-@pytest.fixture
-def storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    original = Storages.__getitem__
-
-    def getitem(self: Storages, id_storage: int) -> object:
-        if id_storage == STORAGE:
-            return SimpleNamespace(
-                id=STORAGE, local_path=str(tmp_path), protocol="local"
-            )
-        return original(self, id_storage)
-
-    monkeypatch.setattr(Storages, "__getitem__", getitem)
-    return tmp_path
+H264 = ("-c:v", "libx264", "-preset", "ultrafast")
 
 
 @pytest.fixture
-def meta() -> Iterator[object]:
-    from services.meta import Service
-
-    yield Service(9999, fromstring('<settings restart_on_update="all"/>'))
+def meta() -> Service:
+    return Service(9999, fromstring('<settings restart_on_update="all"/>'))
 
 
 @pytest.fixture
 def file_asset(db: nebula.DB, asset: nebula.Asset, storage: Path) -> nebula.Asset:
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-loglevel",
-            "error",
-            "-f",
-            "lavfi",
-            "-i",
-            "testsrc=d=2",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            str(storage / "clip.mp4"),
-        ],
-        check=True,
-    )
+    clip(storage / "clip.mp4", "testsrc=d=2", *H264)
     asset["media_type"] = MediaType.FILE
     asset["content_type"] = 2  # video
     asset["id_storage"] = STORAGE
@@ -140,24 +106,7 @@ def test_changed_file_restarts_jobs(
     job.done()
 
     # New content, different size
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-loglevel",
-            "error",
-            "-y",
-            "-f",
-            "lavfi",
-            "-i",
-            "testsrc=d=4",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            str(storage / "clip.mp4"),
-        ],
-        check=True,
-    )
+    clip(storage / "clip.mp4", "testsrc=d=4", *H264)
     online(meta, file_asset, storage)
     assert Job(id_job).get_status() == JobState.RESTART
 
@@ -168,8 +117,6 @@ def test_restart_on_update_list(
     storage: Path,
     make_action: Callable[..., int],
 ) -> None:
-    from services.meta import Service
-
     keep, restart = make_action(""), make_action("")
     meta = Service(9999, fromstring(f'<settings restart_on_update="{restart}"/>'))
     online(meta, file_asset, storage)

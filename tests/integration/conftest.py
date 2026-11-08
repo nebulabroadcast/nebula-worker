@@ -4,7 +4,10 @@ Each test makes its own asset and actions (ids from SCRATCH_ACTION up) and
 removes them afterwards, so they can run against a database in use.
 """
 
+import subprocess
 from collections.abc import Callable, Iterator
+from pathlib import Path
+from types import SimpleNamespace
 
 import psycopg
 import pytest
@@ -20,8 +23,12 @@ except psycopg.OperationalError as e:
 import nebula  # noqa: E402
 from nebula.enum import ObjectStatus  # noqa: E402
 from nebula.jobs.actions import actions  # noqa: E402
+from nebula.storages import Storages  # noqa: E402
 
 SCRATCH_ACTION = 990
+# Patched to a temp dir here; the stack worker sees it as an unmounted samba
+# storage and leaves its assets alone (workbench stack/settings/storages.py)
+STORAGE = 97
 
 
 @pytest.fixture
@@ -71,3 +78,29 @@ def make_action(db: nebula.DB) -> Iterator[Callable[[str], int]]:
         db.query("DELETE FROM actions WHERE id = %s", [id_action])
         actions.data.pop(id_action, None)
     db.commit()
+
+
+@pytest.fixture
+def storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Storage STORAGE, as a local storage in a temp dir."""
+    original = Storages.__getitem__
+
+    def getitem(self: Storages, id_storage: int) -> object:
+        if id_storage == STORAGE:
+            return SimpleNamespace(
+                id=STORAGE, local_path=str(tmp_path), protocol="local"
+            )
+        return original(self, id_storage)
+
+    monkeypatch.setattr(Storages, "__getitem__", getitem)
+    return tmp_path
+
+
+def clip(path: Path, source: str = "testsrc=d=1", *args: str) -> Path:
+    """Write a test clip from a lavfi source; args go before the output."""
+    subprocess.run(
+        ["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", source]
+        + [*args, str(path)],
+        check=True,
+    )
+    return path
