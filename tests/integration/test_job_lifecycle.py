@@ -230,3 +230,28 @@ def test_conditions_see_enums_not_builtins(asset: nebula.Asset) -> None:
     assert condition("create_if", "__import__('os')").should_create(asset) is False
     # A broken start_if doesn't start the job
     assert condition("start_if", "1/0").should_start(asset) is False
+
+
+def test_no_progress_event_after_abort(
+    asset: nebula.Asset,
+    make_action: Callable[..., int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A late progress tick of an aborted job must not announce it as running
+    id_action = make_action("")
+    id_job = send_to(asset.id, id_action)
+    job = take(id_action)
+    job.abort()
+    sent: list[dict] = []
+    monkeypatch.setattr(
+        nebula.jobs.jobs.messaging, "send", lambda topic, **data: sent.append(data)
+    )
+    job.set_progress(50)
+    assert sent == []
+    assert job_row(id_job, "status")[0] == JobState.ABORTED
+
+    job.restart()
+    job = take(id_action)
+    sent.clear()
+    job.set_progress(50)
+    assert [m["progress"] for m in sent] == [50]

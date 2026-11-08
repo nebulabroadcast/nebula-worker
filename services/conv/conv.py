@@ -112,16 +112,15 @@ class Service(BaseService):
             self.encoder = available_encoders[using](asset, task, job_params)
 
             nebula.log.debug(f"Configuring task {id_task + 1} of {len(tasks)}")
-
             try:
-                self.encoder.configure()
-            except Exception as e:
-                self.job.fail(f"Failed to configure task {id_task + 1}: {e}")
-                nebula.log.traceback()
-                return
+                try:
+                    self.encoder.configure()
+                except Exception as e:
+                    self.job.fail(f"Failed to configure task {id_task + 1}: {e}")
+                    nebula.log.traceback()
+                    return
 
-            nebula.log.info(f"Starting task {id_task + 1} of {len(tasks)}")
-            try:
+                nebula.log.info(f"Starting task {id_task + 1} of {len(tasks)}")
                 try:
                     self.encoder.start()
                     self.encoder.wait(self.progress_handler)

@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import time
 from types import SimpleNamespace
 
@@ -73,3 +74,55 @@ def test_missing_mount_binary_is_a_failed_mount() -> None:
 
     with pytest.raises(RuntimeError):
         exec_mount(["/nonexistent/mount.cifs", "//x/y", "/tmp/z"])
+
+
+def test_shutdown_kills_children_of_exited_service() -> None:
+    # The service exited, but its child (ffmpeg) still runs
+    proc = subprocess.Popen(["sh", "-c", "sleep 60 & exit 0"], start_new_session=True)
+    proc.wait(timeout=5)
+    assert group_alive(proc.pid)
+    monitor = SimpleNamespace(services={7: [proc, "test"]})
+    monitor.kill_service = lambda id_service: ServiceMonitor.kill_service(
+        monitor,  # type: ignore[arg-type]
+        id_service,
+    )
+    ServiceMonitor.on_shutdown(monitor)  # type: ignore[arg-type]
+    for _ in range(50):
+        if not group_alive(proc.pid):
+            break
+        time.sleep(0.1)
+    assert not group_alive(proc.pid), "child survived"
+
+
+def fake_service(id_service: int) -> subprocess.Popen:
+    # Looks like `manage run <id>` in /proc/<pid>/cmdline
+    code = "import time; time.sleep(60)"
+    argv = [sys.executable, "-c", code, "/opt/nebula/manage", "run", str(id_service)]
+    return subprocess.Popen(argv, start_new_session=True)
+
+
+def test_stale_service_is_killed() -> None:
+    from dispatch.service_monitor import kill_stale_service
+
+    proc = fake_service(7)
+    time.sleep(0.2)
+    kill_stale_service(7, proc.pid)
+    assert proc.wait(timeout=5) != 0
+
+
+def test_reused_pid_is_not_killed() -> None:
+    # The recorded PID now belongs to something else: leave it alone
+    from dispatch.service_monitor import is_service_process, kill_stale_service
+
+    other = fake_service(8)
+    plain = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    try:
+        time.sleep(0.2)
+        assert not is_service_process(other.pid, 7)
+        kill_stale_service(7, other.pid)
+        kill_stale_service(7, plain.pid)
+        kill_stale_service(7, 999_999_999)  # no such process
+        assert other.poll() is None and plain.poll() is None
+    finally:
+        other.kill()
+        plain.kill()

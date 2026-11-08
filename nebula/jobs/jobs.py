@@ -177,10 +177,14 @@ class Job:
                 progress=%s,
                 message=%s
             WHERE id=%s AND status=1
+            RETURNING id
             """,
             [progress, message, self.id],
         )
+        updated = bool(db.fetchall())
         db.commit()
+        if not updated:
+            return  # aborted or restarted meanwhile: don't announce progress
         messaging.send(
             "job_progress",
             id=self.id,

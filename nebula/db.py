@@ -409,13 +409,17 @@ class DB:
         self._inserted = self._session_dirty = False
         if conn is None:
             return
-        self._pinned = False
+        pinned, self._pinned = self._pinned, False
         self._cursor = None
         if self._own_conn:
             self._own_conn = False
             conn.close()
-        else:
-            _return(conn)
+            return
+        if pinned:
+            # A cursor handed out may still be referenced: close the
+            # connection so nobody else gets it while that cursor exists
+            conn.close()
+        _return(conn)
 
     def _reset_session(self, conn: psycopg.Connection) -> None:
         # SET outlives the transaction; the next borrower mustn't inherit it
@@ -462,11 +466,14 @@ class DB:
         # connection of a dropped handle. A pinned connection is left to its
         # cursor's references and closes when they go.
         held = getattr(self, "_held", None)
-        if held is not None and not getattr(self, "_own_conn", False):
-            try:
-                _return(held)
-            except Exception:
-                pass
+        if held is None or getattr(self, "_own_conn", False):
+            return
+        try:
+            if getattr(self, "_pinned", False):
+                held.close()  # a retained cursor must not share it (see above)
+            _return(held)
+        except Exception:
+            pass
 
     #
     # Direct access, for plugins that used the psycopg2 objects

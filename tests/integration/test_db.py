@@ -2,6 +2,7 @@
 
 import gc
 import threading
+import time
 from collections.abc import Iterator
 
 import psycopg
@@ -297,3 +298,22 @@ def test_select_read_in_autocommit() -> None:
     db = DB()
     db.query("SELECT now() = statement_timestamp()")  # no surrounding transaction
     assert db.fetchone() == (True,)
+
+
+def test_retained_cursor_does_not_share_a_pooled_connection() -> None:
+    # cur taken while a write was open pins that pooled connection; when the
+    # handle goes, the cursor must not keep using a connection the pool
+    # lends to someone else
+    db = DB()
+    db.query(f"INSERT INTO {TABLE} (value) VALUES ('a')")
+    cur = db.cur
+    del db
+    gc.collect()
+    for _ in range(20):  # the pool replaces the closed connection in background
+        if in_use() == 0:
+            break
+        time.sleep(0.1)
+    assert in_use() == 0
+    with pytest.raises(psycopg.Error):
+        cur.execute("SELECT 1")
+    assert values() == []  # the uncommitted write was rolled back
