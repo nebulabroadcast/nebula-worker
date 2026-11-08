@@ -21,7 +21,7 @@ def get_import_job(asset: Asset, action: ImportDefinition, service, db: DB) -> J
         db=db,
     )
     db.query(
-        "UPDATE jobs SET start_time = %s, id_service = %s WHERE id = %s",
+        "UPDATE jobs SET status = 1, start_time = %s, id_service = %s WHERE id = %s",
         [time.time(), service.id, id_job],
     )
     db.commit()

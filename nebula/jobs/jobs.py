@@ -176,7 +176,7 @@ class Job:
                 status=1,
                 progress=%s,
                 message=%s
-            WHERE id=%s
+            WHERE id=%s AND status=1
             """,
             [progress, message, self.id],
         )
@@ -446,17 +446,18 @@ def get_job(
         # Pre-script filtering
         #
 
-        waiting: str | None = None
+        waiting = False
         for pre in action.settings.findall("pre"):
             if pre.text:
                 try:
                     exec(pre.text)
                 except Exception as e:
-                    waiting = f"Waiting: pre-script: {e}"[:200]
+                    waiting = True
+                    # Inside except: log.traceback needs the active exception
+                    if wait(db, job, f"Waiting: pre-script: {e}"[:200]):
+                        log.traceback(f"Pre-script failed, not starting {job}")
                     break
         if waiting:
-            if wait(db, job, waiting):
-                log.traceback(f"Pre-script failed, not starting {job}")
             continue
 
         if status != JobState.RESTART.value and action.should_skip(asset):
@@ -495,7 +496,7 @@ def wait(db: DB, job: Job, message: str) -> bool:
     db.query(
         """
         UPDATE jobs SET message = %s
-        WHERE id = %s AND message IS DISTINCT FROM %s
+        WHERE id = %s AND id_service IS NULL AND message IS DISTINCT FROM %s
         RETURNING id
         """,
         [message, job.id, message],
