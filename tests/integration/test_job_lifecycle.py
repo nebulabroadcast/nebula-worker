@@ -117,6 +117,39 @@ def test_done_abort_restart(
     )
 
 
+def test_restarted_job_taken_by_another_service(
+    db: nebula.DB, asset: nebula.Asset, make_action: Callable[..., int]
+) -> None:
+    id_action = make_action("")
+    id_job = send_to(asset.id, id_action, db=db)
+    old = take(id_action)
+    # The backend restarts the job, another service takes it before the
+    # first one's next progress tick
+    db.query("UPDATE jobs SET id_service = NULL, status = 5 WHERE id = %s", [id_job])
+    db.commit()
+    new = get_job(902, [id_action])
+    assert new
+    new.set_progress(10, "new owner")
+
+    assert old.get_status() == JobState.IN_PROGRESS
+    assert old.lost
+    assert not new.lost
+    # Nothing the first service does changes the job any more
+    old.set_progress(90, "old owner")
+    old.done()
+    old.fail("broken")
+    old.abort()
+    old.restart()
+    assert job_row(id_job, "status", "progress", "message", "id_service") == (
+        JobState.IN_PROGRESS,
+        10,
+        "new owner",
+        902,
+    )
+    new.done("ok")
+    assert job_row(id_job, "status", "message") == (JobState.COMPLETED, "ok")
+
+
 def test_only_one_service_takes_a_job(
     db: nebula.DB, asset: nebula.Asset, make_action: Callable[..., int]
 ) -> None:

@@ -61,6 +61,13 @@ class Service(BaseService):
             return
 
         stat = self.job.get_status()
+        if self.job.lost:
+            # Restarted, maybe taken by another service already (its status
+            # is then in progress again): stop, the job isn't ours to update
+            nebula.log.warning(f"{self.job} is no longer ours, stopping")
+            self.encoder.aborted = True
+            self.encoder.stop()
+            return
         # Set aborted here, not only in stop(): the process may already have
         # exited, and then stop() doesn't, and the job would end as done
         if stat == JobState.RESTART:
