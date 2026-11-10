@@ -11,8 +11,6 @@ class NebulaConfig(BaseModel):
         description="",
     )
 
-    motd: str = Field("Nebula 6 ALPHA")
-
     postgres: str = Field(
         "postgres://nebula:nebula@postgres/nebula",
         description="PostgreSQL connection string",
@@ -23,19 +21,9 @@ class NebulaConfig(BaseModel):
         description="Redis connection string",
     )
 
-    frontend_dir: str = Field(
-        "/frontend",
-        description="Path to the frontend directory",
-    )
-
     plugin_dir: str = Field(
         "/plugins",
         description="Path to the plugin directory",
-    )
-
-    password_hashing: Literal["legacy"] = Field(
-        "legacy",
-        description="Password hashing method",
     )
 
     nebula_root: str = Field(

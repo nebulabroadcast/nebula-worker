@@ -145,6 +145,18 @@ def noop(x: Any) -> Any:
     return x
 
 
+TAG_MAP = {
+    "title": ("title", None),
+    "artist": ("role/performer", None),
+    "composer": ("role/composer", None),
+    "album": ("album", None),
+    "genre": ("genre", None),
+    "comment": ("notes", None),
+    "description": ("description", None),
+    "date": ("year", lambda x: int(x) if len(str(x)) == 4 else 0),
+}
+
+
 def mediaprobe(source_file: str) -> dict[str, Any]:
     source_file = str(source_file)
     if not os.path.exists(source_file):
@@ -220,9 +232,11 @@ def mediaprobe(source_file: str) -> dict[str, Any]:
 
     # Start timecode
 
+    fps = meta.get("video/fps_f", 25)
+
     tc = find_start_timecode(probe_result)
     if tc != "00:00:00:00":
-        meta["start_timecode"] = tc2s(tc)  # TODO: fps
+        meta["start_timecode"] = tc2s(tc, base=fps)
 
     # Content type
 
@@ -245,19 +259,9 @@ def mediaprobe(source_file: str) -> dict[str, Any]:
     # Descriptive metadata
 
     if "tags" in format_info:
-        tag_map = {
-            "title": ("title", None),
-            "artist": ("role/performer", None),
-            "composer": ("role/composer", None),
-            "album": ("album", None),
-            "genre": ("genre", None),
-            "comment": ("notes", None),
-            "date": ("year", lambda x: int(x) if len(str(x)) == 4 else 0),
-        }
-
         for tag, value in format_info["tags"].items():
-            if tag.lower() in tag_map:
-                target_tag, transform = tag_map[tag.lower()]
+            if tag.lower() in TAG_MAP:
+                target_tag, transform = TAG_MAP[tag.lower()]
                 if transform is None:
                     transform = noop
                 meta[target_tag] = transform(value)

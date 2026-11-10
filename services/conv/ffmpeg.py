@@ -1,21 +1,12 @@
 import os
-import re
-import signal
-import subprocess
 from inspect import cleandoc
 
 import nebula
+from nebula.ffmpeg import FFmpeg
 from nebula.storages import storages
 
 from .common import BaseEncoder, ConversionError, temp_file
 from .overlays import Overlay
-
-re_position = re.compile(r"time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})\d*", re.U | re.I)
-
-
-def time2sec(search):
-    hh, mm, ss, cs = search.group(1), search.group(2), search.group(3), search.group(4)
-    return int(hh) * 3600 + int(mm) * 60 + int(ss) + int(cs) / 100.0
 
 
 class FilterChain:
@@ -34,6 +25,7 @@ class FilterChain:
 class NebulaFFMPEG(BaseEncoder):
     def configure(self) -> None:
         self.proc = None
+        self.ffmpeg: FFmpeg | None = None
         self.files = {}
         self.ffparams = ["-y"]
         self.ffparams.extend(["-i", self.asset.file_path])
@@ -44,7 +36,6 @@ class NebulaFFMPEG(BaseEncoder):
         # defined in <script> are visible to subsequent evals.
         # (exec() no longer writes to function locals since Python 3.13)
         ns = {**globals(), "self": self, "asset": asset, "params": params}
-        self.error_log = ""
 
         def add_param(p) -> None:
             # Top-level and paramset params alike: indented text is fine,
@@ -142,74 +133,36 @@ class NebulaFFMPEG(BaseEncoder):
 
     @property
     def is_running(self) -> bool:
-        if not self.proc:
-            return False
-        return self.proc.poll() is None
+        return self.ffmpeg is not None and self.ffmpeg.is_running
 
     def start(self) -> None:
-        cmd = ["ffmpeg", "-hide_banner"]
-        cmd.extend(str(arg) for arg in self.ffparams)
-        nebula.log.info(f"Executing {' '.join(cmd)}")
-        self.proc = subprocess.Popen(
-            cmd,
-            # Nothing reads stdout: a pipe would fill and block ffmpeg
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
+        self.ffmpeg = FFmpeg(*self.ffparams)
+        nebula.log.info(f"Executing ffmpeg {' '.join(self.ffmpeg.args)}")
+        self.ffmpeg.start()
+        self.proc = self.ffmpeg.proc
 
     def stop(self) -> None:
-        if self.proc and self.proc.poll() is None:
+        if self.is_running:
+            assert self.ffmpeg
             self.aborted = True
-            self.proc.send_signal(signal.SIGINT)
+            self.ffmpeg.stop()
 
     def wait(self, progress_handler) -> None:
-        assert self.proc
-        assert self.proc.stderr
-
+        assert self.ffmpeg
         duration = self.asset["duration"]
-        buff = b""
 
-        while True:
-            ch = self.proc.stderr.read(1)
-            if not ch:
-                break
-            if ch in [b"\n", b"\r"]:
-                line = buff.decode("utf-8", errors="ignore").strip()
+        def handler(position: float) -> None:
+            progress_handler((position / duration) * 100 if duration else 0)
 
-                position_match = re_position.search(line)
-                if position_match:
-                    position = time2sec(position_match)
-                    if not duration:
-                        progress_handler(0)
-                    else:
-                        progress = (position / duration) * 100
-                        progress_handler(progress)
-                    self.error_log = ""
-
-                elif line == "Press [q] to stop, [?] for help":
-                    self.error_log = ""
-
-                else:
-                    self.error_log += line + "\n"
-                buff = b""
-            else:
-                buff += ch
-
-        if self.proc:
-            self.proc.wait()
-            if self.proc.stderr:
-                self.error_log += self.proc.stderr.read().decode(
-                    "utf-8", errors="ignore"
-                )
+        self.ffmpeg.wait(handler)
 
     def finalize(self) -> None:
-        if not self.proc:
+        if not self.ffmpeg:
             return
-        assert self.proc.stderr
 
         # != 0: a process killed by a signal has a negative code
-        if self.proc.returncode != 0:
-            last_lines = self.error_log.splitlines()[-10:]
+        if self.ffmpeg.returncode != 0:
+            last_lines = self.ffmpeg.error_lines[-10:]
             nebula.log.debug("FFMPEG error log:")
             for line in last_lines:
                 nebula.log.debug(line)

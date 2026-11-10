@@ -1,8 +1,6 @@
 import json
 import subprocess
-import tempfile
 import tomllib
-from collections.abc import Callable
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -10,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, field_validator
 
 import nebula
+from nebula.ffmpeg import run_ffmpeg
 
 PROFILES_DIR = Path(__file__).parent / "profiles"
 
@@ -162,38 +161,6 @@ def mediainfo(path: Path) -> MediaInfo:
         video_track=video_track,
         audio_tracks=audio_tracks,
     )
-
-
-def run_ffmpeg(args: list[str], progress_handler: Callable[[float], None]) -> None:
-    """Run ffmpeg, reporting progress as seconds of output written.
-
-    Raises an exception with ffmpeg's error output on failure.
-    """
-    cmd = ["ffmpeg", "-hide_banner", "-nostdin", "-nostats", "-loglevel", "error"]
-    cmd.extend(["-progress", "pipe:1", *args])
-    nebula.log.debug("Executing", " ".join(cmd))
-
-    # stderr goes to a file: a full pipe would block ffmpeg while stdout is read
-    with tempfile.TemporaryFile() as stderr:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=stderr, text=True)
-        assert proc.stdout is not None
-        try:
-            for line in proc.stdout:
-                key, _, value = line.strip().partition("=")
-                if key == "out_time_us" and value.isdigit():
-                    progress_handler(int(value) / 1_000_000)
-        except BaseException:
-            # Don't leave ffmpeg running if reporting progress fails
-            proc.kill()
-            proc.wait()
-            raise
-        proc.wait()
-        if proc.returncode:
-            stderr.seek(0)
-            lines = stderr.read().decode("utf-8", errors="replace").splitlines()
-            # The cause comes first; a broken source can repeat errors a lot
-            error = "\n".join(lines[:50]).strip()
-            raise Exception(error or f"ffmpeg exited with {proc.returncode}")
 
 
 class ImportTranscoder:

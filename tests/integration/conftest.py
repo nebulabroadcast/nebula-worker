@@ -5,6 +5,7 @@ removes them afterwards, so they can run against a database in use.
 """
 
 import subprocess
+import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,8 +27,11 @@ from nebula.jobs.actions import actions  # noqa: E402
 from nebula.storages import Storages  # noqa: E402
 
 SCRATCH_ACTION = 990
-# Patched to a temp dir here; the stack worker sees it as an unmounted samba
-# storage and leaves its assets alone (workbench stack/settings/storages.py)
+# Patched to a temp dir here. A meta service running in the stack must leave
+# its assets alone, so the stack has to define it as a network storage that
+# is never mounted (e.g. samba with an unreachable path): an undefined
+# storage counts as local, and meta turns assets with no file there offline
+# in the middle of a test.
 STORAGE = 97
 
 
@@ -83,6 +87,20 @@ def make_action(db: nebula.DB) -> Iterator[Callable[[str], int]]:
 @pytest.fixture
 def storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Storage STORAGE, as a local storage in a temp dir."""
+    configured = nebula.settings.get_storage(STORAGE)
+    if configured is None or configured.protocol == "local":
+        db = nebula.DB()
+        # last_seen: a stopped worker leaves its services in state 1
+        db.query(
+            "SELECT id FROM services"
+            " WHERE service_type = 'meta' AND state = 1 AND last_seen > %s",
+            [time.time() - 30],
+        )
+        if db.fetchall():
+            pytest.skip(
+                f"A meta service is running and storage {STORAGE} isn't a network "
+                "storage in this stack: it would turn the test assets offline"
+            )
     original = Storages.__getitem__
 
     def getitem(self: Storages, id_storage: int) -> object:

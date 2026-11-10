@@ -1,0 +1,11 @@
+# Bind-mount point of the conti repo in the dev stack, not part of the worker
+conti
+
+**/__pycache__
+.venv
+.git
+.github
+.mypy_cache
+.pytest_cache
+.ruff_cache
+tests
