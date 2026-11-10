@@ -1,16 +1,15 @@
 import functools
 import os
-import signal
 import subprocess
-from collections.abc import Callable
 from typing import Any
 
 import jinja2
 
 import nebula
+from nebula.ffmpeg import AbortWatcher
 from nebula.storages import storages
 
-from .common import BaseEncoder, ConversionError, temp_file
+from .common import BaseEncoder, ConversionAborted, ConversionError, temp_file
 
 
 def process_template(source_path: str, context: dict[str, Any] | None = None) -> str:
@@ -125,58 +124,43 @@ class NebulaMelt(BaseEncoder):
                     self.cmd.extend(["-consumer", f"avformat:{temp_path}"])
         self.cmd.extend(enc_params)
 
-    @property
-    def is_running(self) -> bool:
-        return bool(self.proc and self.proc.poll() is None)
-
-    def start(self) -> None:
+    def run(self, progress_handler, check_abort=None) -> None:
         nebula.log.debug(f"Executing: {' '.join(self.cmd)}")
-        self.proc = subprocess.Popen(
+        proc = subprocess.Popen(
             self.cmd,
             stderr=subprocess.PIPE,
             stdout=None,
             universal_newlines=True,
         )
-
-    def stop(self) -> None:
-        if not self.is_running:
-            return None
-        self.aborted = True
-        self.proc.send_signal(signal.SIGINT)  # type: ignore
-
-    def wait(self, progress_handler: Callable[[float], None]) -> None:
+        assert proc.stderr
         buff = ""
         current_percent = 0
-        assert self.proc
-        assert self.proc.stderr
-        while self.proc.poll() is None:
-            buff += self.proc.stderr.read(1)
-            if buff.endswith("\r") or buff.endswith("\n"):
-                line = buff.strip()
-                if line.startswith("Current"):
-                    try:
-                        progress = int(line.split(":")[-1].strip())
-                    except ValueError:
-                        pass
-                    else:
-                        if current_percent != progress:
-                            current_percent = progress
-                            progress_handler(progress)
-                buff = ""
-        self.proc.wait()
+        try:
+            with AbortWatcher(proc, check_abort) as watcher:
+                while proc.poll() is None:
+                    buff += proc.stderr.read(1)
+                    if buff.endswith("\r") or buff.endswith("\n"):
+                        line = buff.strip()
+                        if line.startswith("Current"):
+                            try:
+                                progress = int(line.split(":")[-1].strip())
+                            except ValueError:
+                                pass
+                            else:
+                                if current_percent != progress:
+                                    current_percent = progress
+                                    progress_handler(progress)
+                        buff = ""
+                proc.wait()
+        except BaseException:
+            # Don't leave melt running if reporting progress fails
+            proc.kill()
+            proc.wait()
+            raise
 
-    def finalize(self) -> None:
-        assert self.proc
-        assert self.proc.stderr
+        if watcher.aborted:
+            raise ConversionAborted()
         # != 0: a process killed by a signal has a negative code
-        if self.proc.returncode != 0:
-            nebula.log.error(self.proc.stderr.read())
+        if proc.returncode != 0:
+            nebula.log.error(proc.stderr.read())
             raise ConversionError("Encoding failed")
-
-        for temp_path in self.files:
-            target_path = self.files[temp_path]
-            try:
-                nebula.log.debug(f"Moving {temp_path} to {target_path}")
-                os.rename(temp_path, target_path)
-            except OSError as e:
-                raise ConversionError("Unable to move output file") from e

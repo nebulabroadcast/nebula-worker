@@ -2,10 +2,10 @@ import os
 from inspect import cleandoc
 
 import nebula
-from nebula.ffmpeg import FFmpeg
+from nebula.ffmpeg import FFmpegAbortedError, FFmpegError, FFmpegProgress, ffmpeg
 from nebula.storages import storages
 
-from .common import BaseEncoder, ConversionError, temp_file
+from .common import BaseEncoder, ConversionAborted, ConversionError, temp_file
 from .overlays import Overlay
 
 
@@ -24,11 +24,9 @@ class FilterChain:
 
 class NebulaFFMPEG(BaseEncoder):
     def configure(self) -> None:
-        self.proc = None
-        self.ffmpeg: FFmpeg | None = None
         self.files = {}
-        self.ffparams = ["-y"]
-        self.ffparams.extend(["-i", self.asset.file_path])
+        # ss is inserted before -i (input seeking)
+        self.ffparams = ["-i", self.asset.file_path]
         asset = self.asset
         params = self.params
 
@@ -43,8 +41,8 @@ class NebulaFFMPEG(BaseEncoder):
             ptext = cleandoc(p.text.strip()) if p.text else ""
             value = str(eval(ptext, ns)) if p.text else ""
             if p.attrib["name"] == "ss":
-                self.ffparams.insert(1, "-ss")
-                self.ffparams.insert(2, value)
+                self.ffparams.insert(0, "-ss")
+                self.ffparams.insert(1, value)
             else:
                 self.ffparams.append("-" + p.attrib["name"])
                 if value:
@@ -131,51 +129,19 @@ class NebulaFFMPEG(BaseEncoder):
                 else:
                     self.ffparams.append(target_path)
 
-    @property
-    def is_running(self) -> bool:
-        return self.ffmpeg is not None and self.ffmpeg.is_running
-
-    def start(self) -> None:
-        self.ffmpeg = FFmpeg(*self.ffparams)
-        nebula.log.info(f"Executing ffmpeg {' '.join(self.ffmpeg.args)}")
-        self.ffmpeg.start()
-        self.proc = self.ffmpeg.proc
-
-    def stop(self) -> None:
-        if self.is_running:
-            assert self.ffmpeg
-            self.aborted = True
-            self.ffmpeg.stop()
-
-    def wait(self, progress_handler) -> None:
-        assert self.ffmpeg
+    def run(self, progress_handler, check_abort=None) -> None:
         duration = self.asset["duration"]
 
-        def handler(position: float) -> None:
-            progress_handler((position / duration) * 100 if duration else 0)
+        def handler(progress: FFmpegProgress) -> None:
+            progress_handler((progress.position / duration) * 100 if duration else 0)
 
-        self.ffmpeg.wait(handler)
-
-    def finalize(self) -> None:
-        if not self.ffmpeg:
-            return
-
-        # != 0: a process killed by a signal has a negative code
-        if self.ffmpeg.returncode != 0:
-            last_lines = self.ffmpeg.error_lines[-10:]
+        try:
+            ffmpeg(self.ffparams, handler, check_abort)
+        except FFmpegAbortedError as e:
+            raise ConversionAborted() from e
+        except FFmpegError as e:
+            lines = str(e).splitlines()
             nebula.log.debug("FFMPEG error log:")
-            for line in last_lines:
+            for line in lines[-10:]:
                 nebula.log.debug(line)
-
-            lmsg = last_lines[-1] if last_lines else "Unknown error"
-            lmsg = lmsg.strip()
-            if lmsg:
-                lmsg = f" ({lmsg})"
-            raise ConversionError(f"Encoding failed{lmsg}")
-
-        for temp_path, target_path in self.files.items():
-            try:
-                nebula.log.debug(f"Moving {temp_path} to {target_path}")
-                os.rename(temp_path, target_path)
-            except OSError as e:
-                raise ConversionError("Unable to move output file") from e
+            raise ConversionError(f"Encoding failed ({lines[-1].strip()})") from e

@@ -8,7 +8,7 @@ from typing import Any
 from pydantic import BaseModel, field_validator
 
 import nebula
-from nebula.ffmpeg import run_ffmpeg
+from nebula.ffmpeg import ffmpeg
 
 PROFILES_DIR = Path(__file__).parent / "profiles"
 
@@ -288,4 +288,4 @@ class ImportTranscoder:
         cmd.extend(self.profile.audio_encoding)
         cmd.append(str(self.target_path))
 
-        run_ffmpeg(cmd, lambda x: progress_handler(x / self.duration * 100))
+        ffmpeg(cmd, lambda p: progress_handler(p.position / self.duration * 100))

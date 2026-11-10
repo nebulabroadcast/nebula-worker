@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import nebula
 from nebula.base_service import BaseService
-from nebula.ffmpeg import FFmpegError, run_ffmpeg
+from nebula.ffmpeg import FFmpegError, ffmpeg
 from nebula.storages import storages
 
 if TYPE_CHECKING:
@@ -77,10 +77,10 @@ class ThumbnailTool:
 
         for size in sizes:
             thumb_path = os.path.join(self.thumb_dir, f"thumb-{size}.jpg")
-            args = ["-y", "-ss", self.thumb_position, "-i", self.asset.file_path]
+            args = ["-ss", self.thumb_position, "-i", self.asset.file_path]
             args += ["-vf", f"scale={size}:-1", "-vframes", "1", "-q:v", "2"]
             try:
-                run_ffmpeg([*args, thumb_path])
+                ffmpeg([*args, thumb_path])
             except FFmpegError as e:
                 nebula.log.error(f"Unable to build thumb {size} for {self.asset}: {e}")
             else:

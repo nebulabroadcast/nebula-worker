@@ -1,5 +1,4 @@
 import os
-import subprocess
 from collections.abc import Callable
 from typing import Any
 from xml.etree import ElementTree as etree
@@ -23,6 +22,10 @@ class ConversionError(Exception):
     pass
 
 
+class ConversionAborted(Exception):
+    pass
+
+
 class BaseEncoder:
     def __init__(
         self,
@@ -33,32 +36,27 @@ class BaseEncoder:
         self.asset = asset
         self.task = task
         self.params = params
-        self.proc: subprocess.Popen | None = None  # type: ignore[type-arg]
         # temp path -> target path, moved into place by finalize()
         self.files: dict[str, str] = {}
-        self.progress = 0
-        self.message = "Started"
-        self.aborted = False
 
     def configure(self) -> None: ...
 
-    @property
-    def is_running(self) -> bool:
-        return False
+    def run(
+        self,
+        progress_handler: Callable[[float], None],
+        check_abort: Callable[[], bool] | None = None,
+    ) -> None:
+        """Encode. progress_handler gets percents. Raises ConversionAborted
+        when check_abort said so, ConversionError when encoding failed."""
 
-    def start(self) -> None: ...
-
-    def stop(self) -> None: ...
-
-    def wait(self, progress_handler: Callable[[float], None]) -> None: ...
-
-    def finalize(self) -> None: ...
-
-    def kill(self) -> None:
-        """Stop the encoder process at once, if it is still running."""
-        if self.proc and self.proc.poll() is None:
-            self.proc.kill()
-            self.proc.wait()
+    def finalize(self) -> None:
+        """Move the finished files into place."""
+        for temp_path, target_path in self.files.items():
+            try:
+                nebula.log.debug(f"Moving {temp_path} to {target_path}")
+                os.rename(temp_path, target_path)
+            except OSError as e:
+                raise ConversionError("Unable to move output file") from e
 
     def remove_temp_files(self) -> None:
         for temp_path in self.files:

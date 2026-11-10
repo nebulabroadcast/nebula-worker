@@ -1,5 +1,4 @@
 import os
-import signal
 import subprocess
 import time
 from pathlib import Path
@@ -8,8 +7,9 @@ from xml.etree.ElementTree import fromstring
 
 import pytest
 
+from nebula.ffmpeg import AbortWatcher
 from services.conv import common, ffmpeg
-from services.conv.common import ConversionError
+from services.conv.common import ConversionAborted, ConversionError
 from services.conv.ffmpeg import NebulaFFMPEG
 
 TASK = """
@@ -43,60 +43,75 @@ def encoder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> NebulaFFMPEG:
     return enc
 
 
-def start(enc: NebulaFFMPEG) -> str:
+def temp_has_data(enc: NebulaFFMPEG) -> bool:
     (temp,) = enc.files
-    enc.start()
-    for _ in range(200):
-        if os.path.exists(temp) and os.path.getsize(temp) > 0:
-            break
-        time.sleep(0.05)
-    return temp
+    return os.path.exists(temp) and os.path.getsize(temp) > 0
 
 
-def test_killed_ffmpeg_is_a_failure(encoder: NebulaFFMPEG, tmp_path: Path) -> None:
-    temp = start(encoder)
-    assert encoder.proc
-    encoder.proc.send_signal(signal.SIGKILL)
-    encoder.wait(lambda progress: None)
-    assert encoder.proc.returncode == -signal.SIGKILL
-    with pytest.raises(ConversionError):
-        encoder.finalize()
+def test_abort_leaves_no_temp_file(encoder: NebulaFFMPEG, tmp_path: Path) -> None:
+    (temp,) = encoder.files
+    # Abort once ffmpeg is writing; asked by the watcher, not on progress
+    with pytest.raises(ConversionAborted):
+        encoder.run(lambda progress: None, lambda: temp_has_data(encoder))
     assert not (tmp_path / "out.mp4").exists()  # nothing moved into place
     encoder.remove_temp_files()
     assert not os.path.exists(temp)
 
 
-def test_abort_leaves_no_temp_file(encoder: NebulaFFMPEG) -> None:
-    temp = start(encoder)
-    encoder.stop()
-    encoder.wait(lambda progress: None)
-    assert encoder.aborted
-    encoder.remove_temp_files()
-    assert not os.path.exists(temp)
+def test_abort_just_as_ffmpeg_exits(encoder: NebulaFFMPEG) -> None:
+    # Too late to stop anything, but the job must not end as done
+    short_source(encoder)
+    done: list[bool] = []
+
+    def check_abort() -> bool:
+        return bool(done)
+
+    def run() -> None:
+        encoder.run(lambda progress: done.append(True), check_abort)
+
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(AbortWatcher, "interval", 3600)  # never asks while running
+    try:
+        with pytest.raises(ConversionAborted):
+            run()
+    finally:
+        monkey.undo()
 
 
-def test_finished_encode_is_moved(encoder: NebulaFFMPEG, tmp_path: Path) -> None:
-    # Short source: replace the 30 s one
+def test_failed_ffmpeg_is_a_failure(encoder: NebulaFFMPEG, tmp_path: Path) -> None:
+    os.remove(encoder.asset.file_path)
+    with pytest.raises(ConversionError, match="No such file"):
+        encoder.run(lambda progress: None)
+    assert not (tmp_path / "out.mp4").exists()
+
+
+def short_source(encoder: NebulaFFMPEG) -> None:
     subprocess.run(
         ["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=d=1"]
         + ["-c:v", "libx264", "-preset", "ultrafast", encoder.asset.file_path],
         check=True,
     )
-    encoder.start()
-    encoder.wait(lambda progress: None)
+
+
+def test_finished_encode_is_moved(encoder: NebulaFFMPEG, tmp_path: Path) -> None:
+    short_source(encoder)
+    progress: list[float] = []
+    encoder.run(progress.append, lambda: False)
+    assert progress and progress[-1] > 0
     encoder.finalize()
     assert (tmp_path / "out.mp4").stat().st_size > 0
-    assert not encoder.files or not any(os.path.exists(t) for t in encoder.files)
+    assert not any(os.path.exists(t) for t in encoder.files)
 
 
-def test_kill_stops_running_encoder(encoder: NebulaFFMPEG) -> None:
-    # conv calls kill() when wait() fails, e.g. progress reporting raised
-    start(encoder)
+def test_failing_progress_handler_kills_ffmpeg(encoder: NebulaFFMPEG) -> None:
+    # e.g. the database is away while reporting progress
+    def handler(progress: float) -> None:
+        raise RuntimeError("db down")
+
+    started = time.time()
     with pytest.raises(RuntimeError):
-        encoder.wait(lambda progress: (_ for _ in ()).throw(RuntimeError("db down")))
-    assert encoder.proc and encoder.proc.poll() is None  # still encoding
-    encoder.kill()
-    assert encoder.proc.poll() is not None
+        encoder.run(handler)
+    assert time.time() - started < 20  # not the whole veryslow encode
     encoder.remove_temp_files()
 
 
@@ -136,8 +151,8 @@ def test_paramset_params_like_top_level(
         tmp_path,
         monkeypatch,
     )
-    assert args[:5] == ["-y", "-ss", "5", "-i", "in.mp4"]
-    assert args[5:-1] == ["-r", "25", "-vf", "scale=640:360", "-an"]
+    assert args[:4] == ["-ss", "5", "-i", "in.mp4"]
+    assert args[4:-1] == ["-r", "25", "-vf", "scale=640:360", "-an"]
 
 
 def test_paramset_condition_false(
