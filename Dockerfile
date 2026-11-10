@@ -1,4 +1,4 @@
-FROM nebulabroadcast/nebula-worker-base:2026.07
+FROM nebulabroadcast/nebula-worker-base:2026.11
 COPY --from=ghcr.io/astral-sh/uv:0.9.8 /uv /usr/local/bin/uv
 
 ENV PYTHONUNBUFFERED=1
