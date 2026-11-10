@@ -16,13 +16,14 @@ def broker_for(id_action: int):
 
 
 def jobs_of(id_asset: int, id_action: int) -> int:
-    row = nebula.db.fetchrow(
-        "SELECT count(*) AS n FROM jobs WHERE id_asset = %s AND id_action = %s",
-        id_asset,
-        id_action,
+    db = nebula.DB()
+    db.query(
+        "SELECT count(*) FROM jobs WHERE id_asset = %s AND id_action = %s",
+        [id_asset, id_action],
     )
+    row = db.fetchone()
     assert row
-    return row["n"]
+    return row[0]
 
 
 def test_creates_job_once(asset: nebula.Asset, make_action: Callable[..., int]) -> None:
@@ -36,7 +37,9 @@ def test_creates_job_once(asset: nebula.Asset, make_action: Callable[..., int]) 
     assert fresh[actions[id_action].created_key] == 1
 
     # Marked as created: not again, even after the job is gone
-    nebula.db.execute("DELETE FROM jobs WHERE id_action = %s", id_action)
+    db = nebula.DB()
+    db.query("DELETE FROM jobs WHERE id_action = %s", [id_action])
+    db.commit()
     broker.proc(fresh)
     assert jobs_of(asset.id, id_action) == 0
 

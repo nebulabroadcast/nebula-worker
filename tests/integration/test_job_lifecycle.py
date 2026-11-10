@@ -14,11 +14,11 @@ from nebula.log import Logger
 
 
 def job_row(id_job: int, *cols: str) -> tuple:
-    row = nebula.db.fetchrow(
-        f"SELECT {', '.join(cols)} FROM jobs WHERE id = %s", id_job
-    )
+    db = nebula.DB()
+    db.query(f"SELECT {', '.join(cols)} FROM jobs WHERE id = %s", [id_job])
+    row = db.fetchone()
     assert row
-    return tuple(row.values())
+    return row
 
 
 def take(id_action: int) -> Job:

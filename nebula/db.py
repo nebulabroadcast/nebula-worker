@@ -1,24 +1,15 @@
-"""Database access: one psycopg connection pool per process (spec 009).
+"""Database access: one psycopg connection pool per process.
 
-Two APIs share the pool:
+DB() is the handle services and worker plugins have always used. Its
+interface and write semantics don't change: writes need commit(). A read
+borrows a connection and returns it at once; after a write the handle keeps
+its connection (and transaction) until commit() or rollback().
 
-- DB(): the handle services and worker plugins have always used. Its
-  interface and write semantics don't change: writes need commit(). A read
-  borrows a connection and returns it at once; after a write the handle keeps
-  its connection (and transaction) until commit() or rollback().
-- fetch(), fetchrow(), execute(), executemany(), iterate(), transaction(),
-  acquire(): shaped like the backend's nebula.db (nx), synchronous, rows as
-  dicts. Outside transaction() every call commits by itself.
-
-Placeholders are %s in both, as with psycopg2.
+Placeholders are %s, as with psycopg2.
 """
 
 import threading
 import time
-import uuid
-from collections.abc import Iterator
-from contextlib import contextmanager
-from contextvars import ContextVar
 from typing import Any
 from urllib.parse import urlparse
 
@@ -26,25 +17,12 @@ import psycopg
 from psycopg import ClientCursor, sql
 from psycopg.adapt import Dumper
 from psycopg.errors import Error, IntegrityError, OperationalError, UndefinedTable
-from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from nebula.config import config
 from nebula.log import log
 
-__all__ = [
-    "DB",
-    "Error",
-    "IntegrityError",
-    "OperationalError",
-    "acquire",
-    "execute",
-    "executemany",
-    "fetch",
-    "fetchrow",
-    "iterate",
-    "transaction",
-]
+__all__ = ["DB", "Error", "IntegrityError", "OperationalError"]
 
 # A worker process runs only a few threads (the play service the most)
 POOL_MAX_SIZE = 8
@@ -55,13 +33,6 @@ READ_COMMANDS = {"SELECT", "SHOW", "EXPLAIN", "VALUES", "TABLE", "FETCH"}
 
 _pool: ConnectionPool | None = None
 _pool_lock = threading.Lock()
-
-# The connection of the current acquire()/transaction() block. Each thread
-# starts with an empty context, so threads never share one by accident.
-_current: ContextVar[psycopg.Connection | None] = ContextVar(
-    "nebula_db_connection", default=None
-)
-_in_transaction: ContextVar[bool] = ContextVar("nebula_db_transaction", default=False)
 
 
 def connection_kwargs() -> dict[str, Any]:
@@ -126,116 +97,6 @@ def _return(conn: psycopg.Connection) -> None:
     get_pool().putconn(conn)
 
 
-#
-# Backend-style API
-#
-
-
-@contextmanager
-def acquire() -> Iterator[psycopg.Connection]:
-    """The current block's connection, or one from the pool for this block.
-
-    Outside transaction() the connection is in autocommit: every statement
-    commits by itself, as with asyncpg in the backend.
-    """
-    conn = _current.get()
-    if conn is not None:
-        yield conn
-        return
-    conn = get_pool().getconn()
-    token = _current.set(conn)
-    try:
-        conn.autocommit = True
-        yield conn
-    finally:
-        _current.reset(token)
-        try:
-            conn.autocommit = False  # DB() handles expect transactions
-        except Error:
-            pass  # broken connection: the pool discards it
-        _return(conn)
-
-
-@contextmanager
-def transaction() -> Iterator[psycopg.Connection]:
-    """Run the block in one transaction. Nested blocks join the outer one.
-
-    DB() handles used inside the block join it too (their commit() and
-    rollback() do nothing there).
-    """
-    with acquire() as conn:
-        if _in_transaction.get():
-            yield conn
-            return
-        token = _in_transaction.set(True)
-        try:
-            with conn.transaction():
-                yield conn
-        finally:
-            _in_transaction.reset(token)
-
-
-def _params(args: tuple[Any, ...]) -> tuple[Any, ...] | None:
-    # None, not (): a query without parameters may contain a literal %
-    return args or None
-
-
-def execute(query: str, *args: Any) -> str:
-    """Run a query, return its status (e.g. "UPDATE 3")."""
-    with acquire() as conn, conn.cursor() as cur:
-        cur.execute(query, _params(args))
-        return cur.statusmessage or ""
-
-
-def executemany(query: str, args: list[tuple[Any, ...]]) -> None:
-    with acquire() as conn, conn.cursor() as cur:
-        cur.executemany(query, args)
-
-
-def fetch(query: str, *args: Any) -> list[dict[str, Any]]:
-    with acquire() as conn, conn.cursor(row_factory=dict_row) as cur:
-        cur.execute(query, _params(args))
-        return cur.fetchall()
-
-
-def fetchrow(query: str, *args: Any) -> dict[str, Any] | None:
-    with acquire() as conn, conn.cursor(row_factory=dict_row) as cur:
-        cur.execute(query, _params(args))
-        return cur.fetchone()
-
-
-def iterate(query: str, *args: Any) -> Iterator[dict[str, Any]]:
-    """Yield rows from a server-side cursor, without loading them all.
-
-    Uses its own connection (not the context's) unless inside transaction(),
-    so other queries between the rows don't run in the cursor's transaction.
-    """
-    name = f"nebula_iterate_{uuid.uuid4().hex}"
-    if _in_transaction.get() and (conn := _current.get()) is not None:
-        with conn.cursor(name=name, row_factory=dict_row) as cur:
-            cur.execute(query, _params(args))
-            yield from cur
-        return
-    conn = get_pool().getconn()
-    try:
-        with conn.cursor(name=name, row_factory=dict_row) as cur:
-            cur.execute(query, _params(args))
-            yield from cur
-    finally:
-        try:
-            conn.rollback()  # read only; also when the loop was left early
-        except Error:
-            pass
-        _return(conn)
-
-
-#
-# DB() handle
-#
-
-_cursor_warning_shown = False
-
-
 class _TupleDumper(Dumper):
     """Render a tuple as (a, b, ...), as psycopg2 did.
 
@@ -271,12 +132,9 @@ class DB:
     """Database handle for services and worker plugins.
 
     Usage is unchanged from the psycopg2 version: query(), fetchall(),
-    fetchone(), commit(), rollback(), lastid(), close(), cur, conn. Creating
-    one is cheap: it doesn't connect. Safe to use from several threads; each
-    thread reads the rows of its own last query.
-
-    Read query() results with fetchall()/fetchone(); `cur` is a separate
-    cursor for code that executes on it directly.
+    fetchone(), commit(), rollback(), lastid(), close(). Creating one is
+    cheap: it doesn't connect. Safe to use from several threads; each thread
+    reads the rows of its own last query.
 
     lastid() after commit() returns LASTVAL() read at the commit; if that
     transaction's INSERT used no sequence, the value can be stale (as it
@@ -288,13 +146,6 @@ class DB:
         self._local = threading.local()
         # Held from the first write until commit()/rollback()
         self._held: psycopg.Connection | None = None
-        # cur/conn were used: _held is a connection of its own, kept until
-        # close() or until nothing references it, as with psycopg2
-        self._pinned = False
-        self._own_conn = False  # _held came from psycopg.connect, not the pool
-        self._cursor: ClientCursor | None = None
-        # A SET ran on the held connection: reset it before others use it
-        self._session_dirty = False
         self._inserted = False
         self._lastid: int | None = None
 
@@ -308,11 +159,7 @@ class DB:
             if self._held is not None:
                 self._run_held(query, params)
                 return
-            if _in_transaction.get() and (conn := _current.get()) is not None:
-                self._run(conn, query, params)
-                return
             conn = get_pool().getconn()
-            write = False
             try:
                 # A plain SELECT needs no transaction: autocommit saves the
                 # BEGIN and the COMMIT. It may still write (SELECT f() of a
@@ -351,8 +198,6 @@ class DB:
         self._local.pos = 0
         if command == "INSERT":
             self._inserted = True
-        elif command == "SET" and not self._pinned:
-            self._session_dirty = True
         return command not in READ_COMMANDS
 
     def fetchall(self) -> list[tuple[Any, ...]]:
@@ -384,7 +229,7 @@ class DB:
                 self._end(commit=False)
 
     def _end(self, *, commit: bool) -> None:
-        """End the held transaction; give the connection back unless pinned."""
+        """End the held transaction and give the connection back."""
         conn = self._held
         assert conn is not None
         try:
@@ -399,38 +244,14 @@ class DB:
             raise
         finally:
             self._inserted = False
-        if not self._pinned:
-            self._held = None
-            self._reset_session(conn)
-            _return(conn)
+        self._held = None
+        _return(conn)
 
     def _drop_held(self) -> None:
         conn, self._held = self._held, None
-        self._inserted = self._session_dirty = False
-        if conn is None:
-            return
-        pinned, self._pinned = self._pinned, False
-        self._cursor = None
-        if self._own_conn:
-            self._own_conn = False
-            conn.close()
-            return
-        if pinned:
-            # A cursor handed out may still be referenced: close the
-            # connection so nobody else gets it while that cursor exists
-            conn.close()
-        _return(conn)
-
-    def _reset_session(self, conn: psycopg.Connection) -> None:
-        # SET outlives the transaction; the next borrower mustn't inherit it
-        if not self._session_dirty:
-            return
-        self._session_dirty = False
-        try:
-            conn.execute("RESET ALL")
-            conn.commit()
-        except Error:
-            pass  # broken: the pool discards it
+        self._inserted = False
+        if conn is not None:
+            _return(conn)
 
     @staticmethod
     def _read_lastval(conn: psycopg.Connection) -> int | None:
@@ -444,7 +265,7 @@ class DB:
 
     def lastid(self) -> int:
         with self._lock:
-            if self._held is not None or _in_transaction.get():
+            if self._held is not None:
                 self.query("SELECT LASTVAL()")
                 for row in self.fetchall():
                     return row[0]
@@ -453,64 +274,18 @@ class DB:
         raise Exception("Unable to get last id")
 
     def close(self) -> None:
-        with self._lock:
-            if self._held is None:
-                return
-            if self._pinned:
-                self._drop_held()  # closes it, rolling back, as psycopg2 did
-            else:
-                self._end(commit=False)
+        self.rollback()
 
     def __del__(self) -> None:
         # Uncommitted writes are rolled back, as when psycopg2 closed the
-        # connection of a dropped handle. A pinned connection is left to its
-        # cursor's references and closes when they go.
+        # connection of a dropped handle
         held = getattr(self, "_held", None)
-        if held is None or getattr(self, "_own_conn", False):
+        if held is None:
             return
         try:
-            if getattr(self, "_pinned", False):
-                held.close()  # a retained cursor must not share it (see above)
             _return(held)
         except Exception:
             pass
-
-    #
-    # Direct access, for plugins that used the psycopg2 objects
-    #
-
-    def _pin(self) -> psycopg.Connection:
-        global _cursor_warning_shown
-        if not _cursor_warning_shown:
-            log.warning("DB.cur / DB.conn are deprecated, use DB.query()")
-            _cursor_warning_shown = True
-        with self._lock:
-            if not self._pinned:
-                if self._held is None:
-                    # A connection of its own: it lives as long as the handle
-                    # or a cursor handed out references it, like psycopg2's
-                    conn = psycopg.connect(
-                        **connection_kwargs(), cursor_factory=ClientCursor
-                    )
-                    conn.adapters.register_dumper(tuple, _TupleDumper)
-                    self._held = conn
-                    self._own_conn = True
-                # else: keep the pooled connection with the uncommitted write,
-                # so cur/conn see it, as psycopg2's shared connection did
-                self._pinned = True
-            assert self._held is not None
-            return self._held
-
-    @property
-    def conn(self) -> psycopg.Connection:
-        return self._pin()
-
-    @property
-    def cur(self) -> ClientCursor:
-        conn = self._pin()
-        if self._cursor is None:
-            self._cursor = ClientCursor(conn)
-        return self._cursor
 
     def __bool__(self) -> bool:
         return True

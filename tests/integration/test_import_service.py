@@ -48,13 +48,14 @@ def av_clip(path: Path) -> Path:
 
 
 def job_of(asset: nebula.Asset, id_action: int) -> dict:
-    row = nebula.db.fetchrow(
+    db = nebula.DB()
+    db.query(
         "SELECT status, message FROM jobs WHERE id_asset = %s AND id_action = %s",
-        asset.id,
-        id_action,
+        [asset.id, id_action],
     )
+    row = db.fetchone()
     assert row
-    return row
+    return dict(zip(("status", "message"), row, strict=True))
 
 
 def test_successful_import(service, target: nebula.Asset, storage: Path) -> None:
