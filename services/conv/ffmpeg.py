@@ -46,18 +46,23 @@ class NebulaFFMPEG(BaseEncoder):
         ns = {**globals(), "self": self, "asset": asset, "params": params}
         self.error_log = ""
 
+        def add_param(p) -> None:
+            # Top-level and paramset params alike: indented text is fine,
+            # ss goes before -i (input seeking)
+            ptext = cleandoc(p.text.strip()) if p.text else ""
+            value = str(eval(ptext, ns)) if p.text else ""
+            if p.attrib["name"] == "ss":
+                self.ffparams.insert(1, "-ss")
+                self.ffparams.insert(2, value)
+            else:
+                self.ffparams.append("-" + p.attrib["name"])
+                if value:
+                    self.ffparams.append(value)
+
         for p in self.task:
             ns["p"] = p
             if p.tag == "param":
-                ptext = cleandoc(p.text.strip()) if p.text else ""
-                value = str(eval(ptext, ns)) if p.text else ""
-                if p.attrib["name"] == "ss":
-                    self.ffparams.insert(1, "-ss")
-                    self.ffparams.insert(2, value)
-                else:
-                    self.ffparams.append("-" + p.attrib["name"])
-                    if value:
-                        self.ffparams.append(value)
+                add_param(p)
 
             elif p.tag == "metadata":
                 ptext = cleandoc(p.text.strip()) if p.text else ""
@@ -93,10 +98,7 @@ class NebulaFFMPEG(BaseEncoder):
 
             elif p.tag == "paramset" and eval(p.attrib["condition"], ns):
                 for pp in p.findall("param"):
-                    value = str(eval(pp.text, ns)) if pp.text else ""
-                    self.ffparams.append("-" + pp.attrib["name"])
-                    if value:
-                        self.ffparams.append(value)
+                    add_param(pp)
 
             elif p.tag == "output":
                 id_storage = int(eval(p.attrib["storage"], ns))
@@ -150,7 +152,8 @@ class NebulaFFMPEG(BaseEncoder):
         nebula.log.info(f"Executing {' '.join(cmd)}")
         self.proc = subprocess.Popen(
             cmd,
-            stdout=subprocess.PIPE,
+            # Nothing reads stdout: a pipe would fill and block ffmpeg
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
 
@@ -204,14 +207,8 @@ class NebulaFFMPEG(BaseEncoder):
             return
         assert self.proc.stderr
 
-        if self.aborted:
-            for temp_path in self.files:
-                try:
-                    os.remove(temp_path)
-                except Exception:
-                    pass
-
-        if self.proc.returncode > 0:
+        # != 0: a process killed by a signal has a negative code
+        if self.proc.returncode != 0:
             last_lines = self.error_log.splitlines()[-10:]
             nebula.log.debug("FFMPEG error log:")
             for line in last_lines:

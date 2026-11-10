@@ -8,22 +8,17 @@ from nebula.settings.models import StorageSettings
 from nebula.storages import Storage
 
 
-def exec_mount(cmd: str) -> None:
-    proc = subprocess.run(
-        cmd,
-        capture_output=True,
-        shell=True,
-    )
+def exec_mount(cmd: list[str]) -> None:
+    # No shell: options (passwords) may contain any character
+    try:
+        proc = subprocess.run(cmd, capture_output=True)
+    except OSError as e:  # e.g. mount.cifs not installed
+        raise RuntimeError(f"Mount failed: {e}") from e
     if proc.returncode != 0:
         raise RuntimeError(
             f"Mount failed with return code {proc.returncode}"
             f": {proc.stderr.decode().strip()}"
         )
-
-
-# def handle_nfs_storage(storage: Storage):
-#     cmd = f"mount.nfs {storage.path} {storage.local_path}"
-#     exec_mount(cmd)
 
 
 def handle_samba_storage(storage: Storage):
@@ -62,14 +57,12 @@ def handle_samba_storage(storage: Storage):
         else:
             smbopts.append(f"{key}={value}")
 
+    cmd = ["mount.cifs", storage.path, storage.local_path]
     if smbopts:
-        opts = f""" -o '{",".join(smbopts)}'"""
-    else:
-        opts = ""
-
-    cmd = f"mount.cifs {storage.path} {storage.local_path}{opts}"
+        cmd += ["-o", ",".join(smbopts)]
     if storage.mount_attempts < 5:
-        nebula.log.trace(cmd)
+        # Not the options: they hold the password
+        nebula.log.trace(f"mount.cifs {storage.path} {storage.local_path}")
 
     try:
         exec_mount(cmd)

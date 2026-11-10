@@ -1,4 +1,5 @@
 import os
+import signal
 import socket
 import subprocess
 import time
@@ -10,21 +11,45 @@ from nebula.enum import ServiceState
 HOSTNAME = socket.gethostname()
 
 
+def is_service_process(pid: int, id_service: int) -> bool:
+    """Whether PID is still `manage run <id_service>` (PIDs are reused)."""
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            argv = f.read().split(b"\0")
+    except OSError:
+        return False
+    run = [b"run", str(id_service).encode()]
+    return any(arg.endswith(b"manage") for arg in argv) and any(
+        argv[i : i + 2] == run for i in range(len(argv))
+    )
+
+
+def kill_stale_service(id_service: int, pid: int) -> None:
+    """Stop a service a previous dispatch left running (outside a container,
+    where dispatch can restart without its children)."""
+    if pid == os.getpid() or not is_service_process(pid, id_service):
+        return
+    nebula.log.warning(f"Killing service ID {id_service} left running, PID {pid}")
+    try:
+        os.killpg(pid, signal.SIGTERM)  # its own group: start_new_session
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 class ServiceMonitor(BaseAgent):
     def on_init(self):
         self.services = {}
         db = nebula.DB()
-        db.query("SELECT id, pid FROM services WHERE host=%s", [HOSTNAME])
-        for _, pid in db.fetchall():
-            if pid:
-                self.kill_service(pid)
-        db.query("UPDATE services SET state = 0 WHERE host=%s", [HOSTNAME])
+        db.query("SELECT id, pid FROM services WHERE host=%s AND pid > 0", [HOSTNAME])
+        for id_service, pid in db.fetchall():
+            kill_stale_service(id_service, pid)
+        db.query("UPDATE services SET state = 0, pid = 0 WHERE host=%s", [HOSTNAME])
         db.commit()
 
     def on_shutdown(self):
         services = self.services.keys()
         for id_service in services:
-            self.kill_service(id_service=id_service)
+            self.kill_service(id_service)
 
     @property
     def running_services(self):
@@ -70,7 +95,7 @@ class ServiceMonitor(BaseAgent):
 
             elif state == ServiceState.KILL:  # Kill service
                 if id in self.services.keys():
-                    self.kill_service(self.services[id][0].pid)
+                    self.kill_service(id)
 
         #
         # Real service state
@@ -83,7 +108,12 @@ class ServiceMonitor(BaseAgent):
                 continue
             del self.services[id_service]
             nebula.log.warning(f"Service ID {id_service} ({title}) terminated")
-            db.query("UPDATE services SET state=0 WHERE id = %s", [id_service])
+            # Its ffmpeg etc. may outlive it; the group exists while they run
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            db.query("UPDATE services SET state=0, pid=0 WHERE id = %s", [id_service])
             db.commit()
 
         #
@@ -113,24 +143,29 @@ class ServiceMonitor(BaseAgent):
 
         nebula.log.info(f"Starting service ID {id_service} ({title})")
 
-        self.services[id_service] = [
-            subprocess.Popen(proc_cmd, cwd=nebula.config.nebula_root),
-            title,
-        ]
+        # Own process group, so killpg also stops its ffmpeg etc.
+        proc = subprocess.Popen(
+            proc_cmd, cwd=nebula.config.nebula_root, start_new_session=True
+        )
+        self.services[id_service] = [proc, title]
+        # So a restarted dispatch can find it (kill_stale_service)
+        pid_db = nebula.DB()
+        pid_db.query(
+            "UPDATE services SET pid = %s WHERE id = %s", [proc.pid, id_service]
+        )
+        pid_db.commit()
 
     def stop_service(self, id_service, title, db=False):
         nebula.log.info(f"Stopping service ID {id_service} ({title})")
 
-    def kill_service(self, pid=False, id_service=False):
-        if id_service in self.services:
-            pid = self.services[id_service][0].pid
-        if pid == os.getpid() or pid == 0:
+    def kill_service(self, id_service: int) -> None:
+        proc, title = self.services.get(id_service, (None, None))
+        if proc is None:
             return
-        nebula.log.info(f"Attempting to kill PID {pid}")
-        os.system(
-            os.path.join(
-                nebula.config.nebula_root,
-                "support",
-                f"kill_tree.sh {pid}",
-            )
-        )
+        # Also when the service itself has exited: its ffmpeg may still run
+        if proc.poll() is None:
+            nebula.log.info(f"Killing service ID {id_service} ({title})")
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass

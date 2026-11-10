@@ -2,7 +2,7 @@ import sys
 import time
 from xml.etree.ElementTree import Element
 
-from nebula.db import DB
+from nebula.db import DB, OperationalError
 from nebula.enum import ServiceState
 from nebula.log import log
 
@@ -64,20 +64,27 @@ class BaseService:
         sys.exit(0)
 
     def heartbeat(self):
+        # A failed beat is skipped, not fatal: a database restart must not
+        # take the service (and playout) down. The pool reconnects.
         db = DB()
-        db.query("SELECT state FROM services WHERE id=%s", [self.id_service])
         try:
-            state = db.fetchall()[0][0]
-        except IndexError:
-            state = ServiceState.KILL
-        else:
-            if state == 0:
-                state = 1
+            # One statement: a stop request set in between can't be overwritten
             db.query(
-                "UPDATE services SET last_seen=%s, state=%s WHERE id=%s",
-                [time.time(), state, self.id_service],
+                """
+                UPDATE services SET
+                    last_seen = %s,
+                    state = CASE WHEN state = 0 THEN 1 ELSE state END
+                WHERE id = %s
+                RETURNING state
+                """,
+                [time.time(), self.id_service],
             )
+            rows = db.fetchall()
             db.commit()
+            state = rows[0][0] if rows else ServiceState.KILL
+        except OperationalError as e:
+            log.warning(f"Heartbeat failed: {e}")
+            return
 
         if state in [ServiceState.STOPPED, ServiceState.STOPPING, ServiceState.KILL]:
             self.shutdown()

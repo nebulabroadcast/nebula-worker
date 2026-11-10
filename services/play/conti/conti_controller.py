@@ -137,10 +137,10 @@ class ContiController(BaseController):
         self.conti.playlist.append(self.cued)
 
         if not self.conti.started:
+            # The cued clip is the only one in the playlist: it plays right away
             nebula.log.info("Starting Conti")
             self.conti.start()
-
-        if kwargs.get("play", False):
+        elif play:
             return self.take()
         nebula.log.info(f"Cued item {self.cued_item} ({fname})")
 

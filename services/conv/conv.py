@@ -61,11 +61,22 @@ class Service(BaseService):
             return
 
         stat = self.job.get_status()
+        if self.job.lost:
+            # Restarted, maybe taken by another service already (its status
+            # is then in progress again): stop, the job isn't ours to update
+            nebula.log.warning(f"{self.job} is no longer ours, stopping")
+            self.encoder.aborted = True
+            self.encoder.stop()
+            return
+        # Set aborted here, not only in stop(): the process may already have
+        # exited, and then stop() doesn't, and the job would end as done
         if stat == JobState.RESTART:
+            self.encoder.aborted = True
             self.encoder.stop()
             self.job.restart()
             return
         elif stat == JobState.ABORTED:
+            self.encoder.aborted = True
             self.encoder.stop()
             self.job.abort()
             return
@@ -98,45 +109,47 @@ class Service(BaseService):
         job_start_time = time.time()
 
         for id_task, task in enumerate(tasks):
-            try:
-                using = task.attrib["mode"]
-                if using not in available_encoders:
-                    continue
-            except KeyError:
+            using = task.attrib.get("mode")
+            if using not in available_encoders:
                 self.job.fail(
-                    f"Wrong encoder type specified for task {id_task}", critical=True
+                    f"Unknown encoder {using!r} in task {id_task + 1}", critical=True
                 )
                 return
 
             self.encoder = available_encoders[using](asset, task, job_params)
 
             nebula.log.debug(f"Configuring task {id_task + 1} of {len(tasks)}")
-
             try:
-                self.encoder.configure()
-            except Exception as e:
-                self.job.fail(f"Failed to configure task {id_task + 1}: {e}")
-                nebula.log.traceback()
-                return
+                try:
+                    self.encoder.configure()
+                except Exception as e:
+                    self.job.fail(f"Failed to configure task {id_task + 1}: {e}")
+                    nebula.log.traceback()
+                    return
 
-            nebula.log.info(f"Starting task {id_task + 1} of {len(tasks)}")
-            try:
-                self.encoder.start()
-                self.encoder.wait(self.progress_handler)
-            except Exception as e:
-                self.job.fail(f"Failed to encode task {id_task + 1}: {e}")
-                nebula.log.traceback()
-                return
+                nebula.log.info(f"Starting task {id_task + 1} of {len(tasks)}")
+                try:
+                    self.encoder.start()
+                    self.encoder.wait(self.progress_handler)
+                except Exception as e:
+                    self.job.fail(f"Failed to encode task {id_task + 1}: {e}")
+                    # e.g. progress reporting failed: don't leave ffmpeg running
+                    self.encoder.kill()
+                    nebula.log.traceback()
+                    return
 
-            if self.encoder.aborted:
-                return
+                if self.encoder.aborted:
+                    return
 
-            nebula.log.debug(f"Finalizing task {id_task + 1} of {len(tasks)}")
-            try:
-                self.encoder.finalize()
-            except Exception as e:
-                self.job.fail(f"Failed to finalize task {id_task + 1}: {e}")
-                return
+                nebula.log.debug(f"Finalizing task {id_task + 1} of {len(tasks)}")
+                try:
+                    self.encoder.finalize()
+                except Exception as e:
+                    self.job.fail(f"Failed to finalize task {id_task + 1}: {e}")
+                    return
+            finally:
+                # Whatever finalize() didn't move into place
+                self.encoder.remove_temp_files()
 
             job_params = self.encoder.params
 

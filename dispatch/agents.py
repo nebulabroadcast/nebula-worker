@@ -36,6 +36,8 @@ class BaseAgent:
         while self.should_run:
             try:
                 self.main()
+            except nebula.db.OperationalError as e:
+                nebula.log.warning(f"Database unavailable: {e}")
             except Exception:
                 nebula.log.traceback()
             self.first_run = False

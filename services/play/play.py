@@ -127,7 +127,7 @@ class Service(BaseService):
         if not self.controller:
             raise Exception("Unable to cue. Controller not found")
 
-        db = kwargs.get("db", DB())
+        db = kwargs.get("db") or DB()
         assert self.channel, f"Unable to cue. Channel {self.channel.id} not found"
         assert self.controller, "Unable to cue. Controller not found"
 
@@ -319,7 +319,7 @@ class Service(BaseService):
         for plugin in self.plugins:
             if not plugin.manifest.slots:
                 continue
-            result.append(plugin.manifest.dict())
+            result.append(plugin.manifest.model_dump())
         return {"plugins": result}
 
     def plugin_exec(self, **kwargs):
@@ -423,7 +423,7 @@ class Service(BaseService):
             try:
                 plugin.on_change()
             except Exception:
-                nebula.log.error("Plugin on-change: {e}")
+                nebula.log.traceback("Plugin on-change failed")
 
     def on_live_enter(self):
         nebula.log.success("Entering a live event")
@@ -491,9 +491,6 @@ class Service(BaseService):
         if not next_event.bin.items:
             return
 
-        elif run_mode == RunMode.RUN_MANUAL:
-            pass  # ?????
-
         elif run_mode == RunMode.RUN_SOFT:
             nebula.log.info("Soft cue", next_event)
             # if current item is live, take next block/lead out automatically
@@ -512,10 +509,7 @@ class Service(BaseService):
                     except IndexError:
                         pass
             else:
-                try:
-                    id_item = next_event.bin.items[0].id
-                except KeyError:
-                    id_item = 0
+                id_item = next_event.bin.items[0].id
                 if not self.controller.cued_item:
                     return
                 if id_item != self.controller.cued_item.id:

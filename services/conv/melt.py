@@ -94,6 +94,9 @@ class NebulaMelt(BaseEncoder):
                 if not storage.is_writable:
                     raise ConversionError("Target storage is not writable")
 
+                if not p.text:
+                    raise ConversionError("Output path is not specified")
+
                 target_rel_path = eval(p.text, ns)
                 target_path = os.path.join(
                     storages[id_storage].local_path, target_rel_path
@@ -138,6 +141,7 @@ class NebulaMelt(BaseEncoder):
     def stop(self) -> None:
         if not self.is_running:
             return None
+        self.aborted = True
         self.proc.send_signal(signal.SIGINT)  # type: ignore
 
     def wait(self, progress_handler: Callable[[float], None]) -> None:
@@ -164,7 +168,8 @@ class NebulaMelt(BaseEncoder):
     def finalize(self) -> None:
         assert self.proc
         assert self.proc.stderr
-        if self.proc.returncode > 0:
+        # != 0: a process killed by a signal has a negative code
+        if self.proc.returncode != 0:
             nebula.log.error(self.proc.stderr.read())
             raise ConversionError("Encoding failed")
 

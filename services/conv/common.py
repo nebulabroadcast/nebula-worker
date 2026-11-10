@@ -34,6 +34,8 @@ class BaseEncoder:
         self.task = task
         self.params = params
         self.proc: subprocess.Popen | None = None  # type: ignore[type-arg]
+        # temp path -> target path, moved into place by finalize()
+        self.files: dict[str, str] = {}
         self.progress = 0
         self.message = "Started"
         self.aborted = False
@@ -51,3 +53,18 @@ class BaseEncoder:
     def wait(self, progress_handler: Callable[[float], None]) -> None: ...
 
     def finalize(self) -> None: ...
+
+    def kill(self) -> None:
+        """Stop the encoder process at once, if it is still running."""
+        if self.proc and self.proc.poll() is None:
+            self.proc.kill()
+            self.proc.wait()
+
+    def remove_temp_files(self) -> None:
+        for temp_path in self.files:
+            try:
+                os.remove(temp_path)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                nebula.log.warning(f"Unable to remove temp file {temp_path}")

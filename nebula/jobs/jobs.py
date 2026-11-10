@@ -23,6 +23,8 @@ class Job:
     priority: int = 3
     retries: int = 0
     status: JobState = JobState.PENDING
+    # Set by get_status(): another service has the job now (or nobody has)
+    lost: bool = False
 
     def __init__(
         self,
@@ -120,6 +122,23 @@ class Job:
             return
         log.error(f"No such {self}")
 
+    def _update(self, assignments: str, params: list[Any]) -> bool:
+        """Update the job's row, if this handle's service still has the job.
+
+        status alone doesn't tell: after a restart another service may have
+        taken the job and set it in progress again. A handle that never had
+        a service (id_service is None) updates the row unconditionally.
+        """
+        query = f"UPDATE jobs SET {assignments} WHERE id=%s"
+        params = [*params, self.id]
+        if self.id_service is not None:
+            query += " AND id_service=%s"
+            params.append(self.id_service)
+        self.db.query(query + " RETURNING id", params)
+        updated = bool(self.db.fetchall())
+        self.db.commit()
+        return updated
+
     def take(self, id_service: int) -> bool:
         """Take job for processing by service with id_service.
 
@@ -150,6 +169,7 @@ class Job:
             [self.id, id_service],
         )
         if self.db.fetchall():
+            self.id_service = id_service
             messaging.send(
                 "job_progress",
                 id=self.id,
@@ -164,23 +184,23 @@ class Job:
         return False
 
     def set_progress(self, progress: float, message: str | None = None) -> None:
-        db = DB()
         progress = round(progress, 2)
 
         if message is None:
             message = "Job in progress"
 
-        db.query(
-            """
-            UPDATE jobs SET
-                status=1,
-                progress=%s,
-                message=%s
-            WHERE id=%s
-            """,
-            [progress, message, self.id],
-        )
-        db.commit()
+        _ = self.asset  # loads the job (and its id_service) if it wasn't yet
+        query = "UPDATE jobs SET progress=%s, message=%s WHERE id=%s AND status=1"
+        params: list[Any] = [progress, message, self.id]
+        if self.id_service is not None:
+            query += " AND id_service=%s"
+            params.append(self.id_service)
+        self.db.query(query + " RETURNING id", params)
+        updated = bool(self.db.fetchall())
+        self.db.commit()
+        if not updated:
+            # Aborted, restarted or taken by another service meanwhile
+            return
         messaging.send(
             "job_progress",
             id=self.id,
@@ -191,13 +211,21 @@ class Job:
             message=message,
         )
 
+    def _not_ours(self, what: str) -> None:
+        self.lost = True
+        log.warning(
+            f"{self} was restarted or taken by another service, "
+            f"service {self.id_service} doesn't {what} it"
+        )
+
     def get_status(self) -> JobState:
-        self.db.query("SELECT status FROM jobs WHERE id=%s", [self.id])
+        self.db.query("SELECT status, id_service FROM jobs WHERE id=%s", [self.id])
         try:
-            self.status = self.db.fetchall()[0][0]
+            self.status, id_service = self.db.fetchall()[0]
         except IndexError:
             log.error(f"No such {self}")
             return JobState.PENDING
+        self.lost = self.id_service is not None and id_service != self.id_service
         return JobState(self.status)
 
     def abort(self, message: str | None = None) -> None:
@@ -205,18 +233,10 @@ class Job:
         if message is None:
             message = "Aborted"
         log.warning(f"{self}: {message}")
-        self.db.query(
-            """
-            UPDATE jobs SET
-                end_time=%s,
-                status=4,
-                message=%s,
-                progress=0
-            WHERE id=%s
-            """,
-            [now, message, self.id],
-        )
-        self.db.commit()
+        if not self._update(
+            "end_time=%s, status=4, message=%s, progress=0", [now, message]
+        ):
+            return self._not_ours("abort")
         self.status = JobState.ABORTED
         messaging.send(
             "job_progress",
@@ -233,21 +253,20 @@ class Job:
         if message is None:
             message = "Restart requested"
         log.warning(f"{self}: {message}")
-        self.db.query(
+        if not self._update(
             """
-            UPDATE jobs SET
-                id_service=NULL,
-                start_time=NULL,
-                end_time=NULL,
-                status=5,
-                retries=0,
-                progress=0,
-                message=%s
-            WHERE id=%s
+            id_service=NULL,
+            start_time=NULL,
+            end_time=NULL,
+            status=5,
+            retries=0,
+            progress=0,
+            message=%s
             """,
-            [message, self.id],
-        )
-        self.db.commit()
+            [message],
+        ):
+            return self._not_ours("restart")
+        self.id_service = None
         self.status = JobState.RESTART
         messaging.send(
             "job_progress",
@@ -268,20 +287,19 @@ class Job:
             retries = MAX_RETRIES
         else:
             retries = self.retries + 1
-        self.db.query(
+        if not self._update(
             """
-            UPDATE jobs SET
-                id_service=NULL,
-                retries=%s,
-                priority=%s,
-                status=3,
-                progress=0,
-                message=%s
-            WHERE id=%s
+            id_service=NULL,
+            retries=%s,
+            priority=%s,
+            status=3,
+            progress=0,
+            message=%s
             """,
-            [retries, max(0, self.priority - 1), message, self.id],
-        )
-        self.db.commit()
+            [retries, max(0, self.priority - 1), message],
+        ):
+            return self._not_ours(f"fail ({message})")
+        self.id_service = None
         self.status = JobState.FAILED
         log.error(f"{self}: {message}")
         messaging.send(
@@ -299,19 +317,11 @@ class Job:
         now = time.time()
         if message is None:
             message = "Completed"
+        if not self._update(
+            "status=2, progress=100, end_time=%s, message=%s", [now, message]
+        ):
+            return self._not_ours("complete")
         log.success(f"{self}: {message}")
-        self.db.query(
-            """
-            UPDATE jobs SET
-                status=2,
-                progress=100,
-                end_time=%s,
-                message=%s
-            WHERE id=%s
-            """,
-            [now, message, self.id],
-        )
-        self.db.commit()
         self.status = JobState.COMPLETED
         messaging.send(
             "job_progress",
@@ -359,16 +369,17 @@ def get_job(
             settings,
             priority,
             retries,
-            status
+            status,
+            message
         FROM jobs
         WHERE
             status IN (0,3,5)
-            AND id_action IN %s
+            AND id_action = ANY(%s)
             AND id_service IS NULL
             AND retries < %s
             ORDER BY priority DESC, creation_time DESC
         """
-    db.query(q, [tuple(action_ids), MAX_RETRIES])
+    db.query(q, [action_ids, MAX_RETRIES])
 
     for (
         id_job,
@@ -379,11 +390,13 @@ def get_job(
         priority,
         retries,
         status,
+        message,
     ) in db.fetchall():
-        asset = Asset(id_asset, db=db)
         action = actions[id_action]
         job = Job(id_job, db=db)
-        job._asset = asset
+        job._action = action
+        job.status = JobState(status)
+        job.message = message
         job._settings = settings
         job.priority = priority
         job.retries = retries
@@ -425,29 +438,36 @@ def get_job(
             run_on_text = (run_on_tag.text or "").strip()
             if not run_on_text:
                 continue
-            try:
-                value = [int(r.strip()) for r in run_on_text.split(",") if r.isdigit()]
-            except ValueError:
-                log.error(f"Invalid run_on value for action {action}: {run_on_text}")
-                continue
-            run_on_services.extend(value)
+            for r in run_on_text.split(","):
+                # isdecimal, not isdigit: int("²") fails
+                if r.strip().isdecimal():
+                    run_on_services.append(int(r))
+                else:
+                    log.error(f"Invalid run_on value for action {action.title}: {r!r}")
 
         if run_on_services and (id_service not in run_on_services):
             continue
+
+        # Loaded only now: the checks above don't need it
+        asset = Asset(id_asset, db=db)
+        job._asset = asset
 
         #
         # Pre-script filtering
         #
 
+        waiting = False
         for pre in action.settings.findall("pre"):
             if pre.text:
                 try:
                     exec(pre.text)
-                except Exception:
-                    log.traceback()
-                    continue
-        if not action:
-            log.warning(f"Unable to get job. No such action ID {id_action}")
+                except Exception as e:
+                    waiting = True
+                    # Inside except: log.traceback needs the active exception
+                    if wait(db, job, f"Waiting: pre-script: {e}"[:200]):
+                        log.traceback(f"Pre-script failed, not starting {job}")
+                    break
+        if waiting:
             continue
 
         if status != JobState.RESTART.value and action.should_skip(asset):
@@ -473,25 +493,34 @@ def get_job(
                 log.warning(f"Unable to take {job}")
                 continue
         else:
-            db.query(
-                """
-                UPDATE jobs SET
-                    message='Starting',
-                    status=1,
-                    progress=0,
-                    start_time=%s
-                WHERE id=%s
-                """,
-                [now, id_job],
-            )
-            messaging.send(
-                "job_progress",
-                id=id_job,
-                id_asset=id_asset,
-                id_action=id_action,
-                status=status,
-                progress=0,
-                message="Starting",
-            )
-            db.commit()
+            wait(db, job, "Waiting")
     return None
+
+
+def wait(db: DB, job: Job, message: str) -> bool:
+    """Show why a job doesn't start. It stays pending and is checked again
+    on the next pass. Returns True when the message changed (log it then,
+    not on every pass of every service)."""
+    if getattr(job, "message", None) == message:
+        return False  # already shown: no UPDATE per pass
+    db.query(
+        """
+        UPDATE jobs SET message = %s
+        WHERE id = %s AND id_service IS NULL AND message IS DISTINCT FROM %s
+        RETURNING id
+        """,
+        [message, job.id, message],
+    )
+    changed = bool(db.fetchall())
+    db.commit()
+    if changed:
+        messaging.send(
+            "job_progress",
+            id=job.id,
+            id_asset=job.id_asset,
+            id_action=job.id_action,
+            status=job.status,
+            progress=0,
+            message=message,
+        )
+    return changed

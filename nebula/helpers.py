@@ -102,15 +102,15 @@ def get_bin_first_item(id_bin: int, db: DB | None = None) -> Item | None:
 def get_item_event(id_item: int, db: DB | None = None) -> Event | None:
     if db is None:
         db = DB()
-    playout_channel_ids = ", ".join([str(f.id) for f in settings.playout_channels])
     db.query(
-        f"""
+        """
         SELECT e.id, e.meta
         FROM items AS i, events AS e
         WHERE e.id_magic = i.id_bin
-        AND i.id = {id_item}
-        AND e.id_channel in ({playout_channel_ids})
-        """
+        AND i.id = %s
+        AND e.id_channel = ANY(%s)
+        """,
+        [id_item, [ch.id for ch in settings.playout_channels]],
     )
     for _, meta in db.fetchall():
         return Event(meta=meta, db=db)
@@ -250,16 +250,16 @@ def bin_refresh(
     for id_bin in bins:
         b = Bin(id_bin, db=db)
         b.save(notify=False)
-    bq = ", ".join([str(b) for b in bins if b])
     changed_events = []
     db.query(
-        f"""
+        """
         SELECT e.meta FROM events as e, channels AS c
         WHERE
             c.channel_type = 0 AND
             c.id = e.id_channel AND
-            e.id_magic IN ({bq})
-        """
+            e.id_magic = ANY(%s)
+        """,
+        [bins],
     )
     for (meta,) in db.fetchall():
         event = Event(meta=meta, db=db)

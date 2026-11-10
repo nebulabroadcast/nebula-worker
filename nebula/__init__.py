@@ -5,6 +5,8 @@ __all__ = [
     "Event",
     "User",
     "DB",
+    "db",
+    "load_settings",
     "config",
     "log",
     "LogLevel",
@@ -21,6 +23,7 @@ if "--version" in sys.argv:
     print(__version__)
     sys.exit(0)
 
+from nebula import db
 from nebula.config import config
 from nebula.db import DB
 from nebula.log import LogLevel, log
@@ -35,7 +38,6 @@ from nebula.storages import storages
 
 log.user = "nebula"
 log.level = LogLevel[config.log_level.upper()]
-load_settings()
 
 #
 # Helpers

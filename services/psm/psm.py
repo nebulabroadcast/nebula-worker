@@ -24,7 +24,7 @@ STORAGE_STATUS: dict[int, bool] = {}
 
 
 def get_scheduled_assets(id_channel: int, **kwargs):
-    db = kwargs.get("db", DB())
+    db = kwargs.get("db") or DB()
     db.query(
         """
             SELECT

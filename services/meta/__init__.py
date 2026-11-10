@@ -298,15 +298,15 @@ class Service(BaseService):
             asset.save()
 
             if self.restart_on_update and restart_actions:
-                if isinstance(self.restart_on_update, list):
-                    rou = [str(x) for x in self.restart_on_update]
-                    actions_to_restart = ",".join(rou)
-                    action_cond = f"AND id_action in ({actions_to_restart})"
-                else:
-                    action_cond = ""
+                # None (NULL) restarts every action
+                only = (
+                    self.restart_on_update
+                    if isinstance(self.restart_on_update, list)
+                    else None
+                )
                 db = DB()
                 db.query(
-                    f"""
+                    """
                     UPDATE jobs SET
                         status=5,
                         retries=0,
@@ -321,10 +321,10 @@ class Service(BaseService):
                         AND status IN (1,2,3,4,6)
                         AND id_action NOT IN
                             (SELECT id FROM actions WHERE service_type='import')
-                        {action_cond}
+                        AND (%s::integer[] IS NULL OR id_action = ANY(%s))
                     RETURNING id
                     """,
-                    [time.time(), asset.id],
+                    [time.time(), asset.id, only, only],
                 )
 
                 res = db.fetchall()
