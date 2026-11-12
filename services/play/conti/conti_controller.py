@@ -1,6 +1,5 @@
-from conti import Conti, ContiSource
-
 import nebula
+from conti import Conti, ContiSource
 
 from ..base_controller import BaseController
 
@@ -95,10 +94,20 @@ class ContiController(BaseController):
     def paused(self):
         return self.conti.paused
 
+    @paused.setter
+    def paused(self, value: bool) -> None:
+        _ = value
+        nebula.log.warning("paused is read-only")
+
     @property
     def loop(self):
         # TODO: Not implemented in conti
         return False
+
+    @loop.setter
+    def loop(self, value: bool) -> None:
+        _ = value
+        nebula.log.warning("loop is read-only")
 
     def set(self, prop, value):
         _ = prop, value
