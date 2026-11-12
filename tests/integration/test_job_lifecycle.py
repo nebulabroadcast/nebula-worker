@@ -256,11 +256,14 @@ def condition(tag: str, text: str) -> Action:
     return Action(1, "t", fromstring(f"<settings><{tag}>{text}</{tag}></settings>"))
 
 
-def test_conditions_see_enums_not_builtins(asset: nebula.Asset) -> None:
+def test_conditions_see_enums_and_builtins(asset: nebula.Asset) -> None:
     ok = condition("create_if", "asset['status'] == ObjectStatus.ONLINE")
     assert ok.should_create(asset)
-    # No builtins: a condition can't import or open files; it just evaluates False
-    assert condition("create_if", "__import__('os')").should_create(asset) is False
+    # Built-ins work, also inside a generator (one namespace, not locals)
+    assert condition("create_if", "len(str(asset['title'])) > 0").should_create(asset)
+    uses_any = "any(asset[k] for k in ['title'])"
+    assert condition("create_if", uses_any).should_create(asset)
+    assert condition("skip_if", "JobState.PENDING == 0").should_skip(asset)
     # A broken start_if doesn't start the job
     assert condition("start_if", "1/0").should_start(asset) is False
 

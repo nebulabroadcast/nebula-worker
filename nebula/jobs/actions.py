@@ -63,9 +63,9 @@ class Action:
     def should_create(self, asset: Asset) -> bool:
         if not self.create_if:
             return False
-        safe_globals = {"asset": asset, **DEFAULT_EXEC_CONTEXT}
+        context = {"asset": asset, **DEFAULT_EXEC_CONTEXT}
         try:
-            return eval(self.create_if, {"__builtins__": None}, safe_globals)
+            return eval(self.create_if, context)
         except Exception as e:
             self._log_error("create_if", e)
             return False
@@ -73,9 +73,9 @@ class Action:
     def should_start(self, asset: Asset) -> bool:
         if not self.start_if:
             return True
-        safe_globals = {"asset": asset, **DEFAULT_EXEC_CONTEXT}
+        context = {"asset": asset, **DEFAULT_EXEC_CONTEXT}
         try:
-            return eval(self.start_if, {"__builtins__": None}, safe_globals)
+            return eval(self.start_if, context)
         except Exception as e:
             self._log_error("start_if", e)
             return False
@@ -83,9 +83,9 @@ class Action:
     def should_skip(self, asset: Asset) -> bool:
         if not self.skip_if:
             return False
-        safe_globals = {"asset": asset, **DEFAULT_EXEC_CONTEXT}
+        context = {"asset": asset, **DEFAULT_EXEC_CONTEXT}
         try:
-            return eval(self.skip_if, {"__builtins__": None}, safe_globals)
+            return eval(self.skip_if, context)
         except Exception as e:
             self._log_error("skip_if", e)
             return False
