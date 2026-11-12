@@ -1,0 +1,69 @@
+"""Applying metadata probed from a media file to an asset."""
+
+import difflib
+from typing import Any
+
+import nebula
+from nebula.enum import MetaClass
+from nebula.objects import Asset
+from nebula.settings import settings
+from nxtools import get_base_name, slugify
+
+
+def string2cs(key: str, value: str):
+    """Return a CS best matching for the given string."""
+    nebula.log.info(f"Parsing {key} value {value}")
+    cs = settings.metatypes[key].cs
+    if not cs:
+        return None
+    vslug = slugify(value, separator=" ")
+    best_match = None
+    max_ratio: float = 0
+    for ckey, cals in settings.cs[cs].items():
+        cval = cals.aliases["en"].title
+        reflist = [v.strip() for v in cval.split("/")]
+        for m in reflist:
+            mslug = slugify(m, separator=" ")
+            r = difflib.SequenceMatcher(None, vslug, mslug).ratio()
+            if r < max_ratio:
+                continue
+            best_match = ckey
+            max_ratio = r
+
+    if max_ratio < 0.85:
+        return None
+    return best_match
+
+
+def apply_probed_meta(asset: Asset, meta: dict[str, Any]) -> None:
+    """Set the probed values on the asset (without saving it).
+
+    Technical values always win. Descriptive ones only fill empty fields,
+    so nothing a user entered is overwritten; a title is also replaced when
+    it is the auto-generated one (the file name).
+    """
+    for key, value in meta.items():
+        metatype = settings.metatypes.get(key)
+        if not metatype:
+            continue
+
+        # Only update auto-generated title
+        if key == "title":
+            if asset["title"] and asset["title"] != get_base_name(asset.file_path):
+                continue
+
+        # Do not update descriptive metadata
+        elif metatype.ns == "m" and asset[key]:
+            continue
+
+        if key == "genre" and metatype.metaclass == MetaClass.SELECT:
+            try:
+                if (new_val := string2cs("genre", value)) is None:
+                    continue
+            except Exception:
+                nebula.log.traceback("Unable to parse genre")
+                continue
+            asset["genre/original"] = value
+            value = new_val
+
+        asset[key] = value

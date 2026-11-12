@@ -1,10 +1,13 @@
 import time
 from pathlib import Path
+from typing import Any
 
 import nebula
 from nebula.db import DB
 from nebula.enum import ObjectStatus
 from nebula.jobs import Job, send_to
+from nebula.mediaprobe import DESCRIPTIVE_KEYS, mediaprobe
+from nebula.metadata.probe import apply_probed_meta
 from nebula.objects import Asset
 
 from .common import ImportDefinition, create_error
@@ -92,6 +95,22 @@ def remove_temp_file(temp_file: Path) -> None:
         nebula.log.warning(f"Unable to remove temp file {temp_file}")
 
 
+def probe_source_tags(import_file: Path) -> dict[str, Any]:
+    """Descriptive metadata (title, artist...) from the tags of the source.
+
+    The transcode doesn't carry them over to the asset file (MXF has no
+    place for them), so the meta service wouldn't find them there.
+    Never raises: the tags are a bonus, the import doesn't depend on them.
+    """
+    try:
+        meta = mediaprobe(str(import_file))
+    except Exception:
+        nebula.log.traceback()
+        nebula.log.warning(f"Unable to read the tags of {import_file.name}")
+        return {}
+    return {key: value for key, value in meta.items() if key in DESCRIPTIVE_KEYS}
+
+
 def move_import_file(import_file: Path, error: str | None) -> bool:
     """Move the import file to backup/ on success or failed/ on failure.
 
@@ -137,6 +156,9 @@ def import_asset(
     except Exception as e:
         error = str(e).strip() or e.__class__.__name__
 
+    # Before the source is moved away
+    source_tags = probe_source_tags(import_file) if error is None else {}
+
     moved = move_import_file(import_file, error)
 
     if error is not None:
@@ -154,6 +176,7 @@ def import_asset(
         metatype = nebula.settings.metatypes.get(key)
         if metatype and (metatype.ns in ["q", "f"]):
             del asset.meta[key]
+    apply_probed_meta(asset, source_tags)
     asset["status"] = ObjectStatus.CREATING
     # The file was renamed into place complete: meta needn't wait for it
     asset["__file/written"] = Path(asset.file_path).stat().st_size

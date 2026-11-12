@@ -85,6 +85,23 @@ def test_successful_import(service, target: nebula.Asset, storage: Path) -> None
     assert probe.stdout.strip().rstrip(",") == "tt"  # top field first
 
 
+def test_source_tags_fill_empty_fields(
+    service, target: nebula.Asset, storage: Path
+) -> None:
+    tags = ("-metadata", "title=Tagged title", "-metadata", "description=From tags")
+    sine = ("-f", "lavfi", "-i", "sine=d=1:r=48000", "-shortest")
+    source = storage / "import" / f"{target.id}.mp4"
+    clip(source, "testsrc=s=1280x720:d=1", *sine, *tags)
+    service.import_file(service.action, source)
+
+    fresh = nebula.Asset(target.id, db=nebula.DB())
+    assert fresh["status"] == ObjectStatus.CREATING
+    # The MXF can't carry the tags: they are taken from the source
+    assert fresh["description"] == "From tags"
+    # What the asset already has is kept
+    assert fresh["title"] == "integration test"
+
+
 def test_failed_import_keeps_asset_file(
     service, target: nebula.Asset, storage: Path
 ) -> None:

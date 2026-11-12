@@ -54,6 +54,26 @@ def test_new_file_turns_online(meta, file_asset: nebula.Asset, storage: Path) ->
     assert "__file/written" not in fresh.meta
 
 
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("clip", "Tagged title"),  # auto-generated from the file name
+        ("My title", "My title"),  # entered by a user
+    ],
+)
+def test_title_tag_replaces_only_generated_title(
+    meta, file_asset: nebula.Asset, storage: Path, title: str, expected: str
+) -> None:
+    tags = ("-metadata", "title=Tagged title", "-metadata", "description=From tags")
+    clip(storage / "clip.mp4", "testsrc=d=2", *H264, *tags)
+    file_asset["title"] = title
+    file_asset.save(notify=False)
+    meta.process(reload(file_asset))
+    fresh = reload(file_asset)
+    assert fresh["title"] == expected
+    assert fresh["description"] == "From tags"
+
+
 def online(meta, asset: nebula.Asset, storage: Path) -> None:
     meta.process(reload(asset))
     fresh = reload(asset)

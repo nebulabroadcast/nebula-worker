@@ -156,6 +156,9 @@ TAG_MAP = {
     "date": ("year", lambda x: int(x) if len(str(x)) == 4 else 0),
 }
 
+# Keys of the mediaprobe result that come from the file tags
+DESCRIPTIVE_KEYS = frozenset(target for target, _ in TAG_MAP.values())
+
 
 def mediaprobe(source_file: str) -> dict[str, Any]:
     source_file = str(source_file)
