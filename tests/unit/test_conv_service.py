@@ -6,37 +6,38 @@ from nebula.enum import JobState
 from services.conv import Service as Conv
 
 
-@pytest.mark.parametrize("state", [JobState.ABORTED, JobState.RESTART])
-def test_abort_after_encoder_exited(state: JobState) -> None:
-    # The user aborts just as ffmpeg exits: stop() then does nothing, but the
-    # job must not be finalized and marked done
+def conv_with(status: JobState, lost: bool = False) -> tuple[SimpleNamespace, list]:
     calls: list[str] = []
     job = SimpleNamespace(
-        get_status=lambda: state,
-        lost=False,
-        abort=lambda: calls.append("abort"),
-        restart=lambda: calls.append("restart"),
-    )
-    encoder = SimpleNamespace(aborted=False, stop=lambda: None)  # process gone
-    conv = SimpleNamespace(job=job, encoder=encoder)
-    Conv.progress_handler(conv, 99)  # type: ignore[arg-type]
-    assert encoder.aborted
-    assert calls == ["abort" if state == JobState.ABORTED else "restart"]
-
-
-def test_job_taken_by_another_service_is_left_alone() -> None:
-    # Restarted and taken by another service between two progress ticks: its
-    # status is in progress again, but the job isn't ours any more
-    calls: list[str] = []
-    job = SimpleNamespace(
-        get_status=lambda: JobState.IN_PROGRESS,
-        lost=True,
+        status=status,
+        lost=lost,
+        get_status=lambda: status,
         abort=lambda: calls.append("abort"),
         restart=lambda: calls.append("restart"),
         set_progress=lambda *args: calls.append("set_progress"),
     )
-    encoder = SimpleNamespace(aborted=False, stop=lambda: calls.append("stop"))
-    conv = SimpleNamespace(job=job, encoder=encoder)
+    return SimpleNamespace(job=job), calls
+
+
+@pytest.mark.parametrize("state", [JobState.ABORTED, JobState.RESTART])
+def test_abort_and_restart_stop_the_encoder(state: JobState) -> None:
+    conv, calls = conv_with(state)
+    assert Conv.check_abort(conv)  # type: ignore[arg-type]
+    Conv.job_aborted(conv)  # type: ignore[arg-type]
+    assert calls == ["abort" if state == JobState.ABORTED else "restart"]
+
+
+def test_running_job_is_not_aborted() -> None:
+    conv, calls = conv_with(JobState.IN_PROGRESS)
+    assert not Conv.check_abort(conv)  # type: ignore[arg-type]
     Conv.progress_handler(conv, 50)  # type: ignore[arg-type]
-    assert encoder.aborted
-    assert calls == ["stop"]
+    assert calls == ["set_progress"]
+
+
+def test_job_taken_by_another_service_is_left_alone() -> None:
+    # Restarted and taken by another service: its status is in progress
+    # again, but the job isn't ours any more
+    conv, calls = conv_with(JobState.IN_PROGRESS, lost=True)
+    assert Conv.check_abort(conv)  # type: ignore[arg-type]
+    Conv.job_aborted(conv)  # type: ignore[arg-type]
+    assert calls == []

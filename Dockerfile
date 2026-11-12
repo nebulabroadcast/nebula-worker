@@ -9,7 +9,8 @@ WORKDIR /opt/nebula
 COPY ./pyproject.toml ./uv.lock /opt/nebula/
 # Exactly the versions in uv.lock (pip alone would resolve pyproject's ranges)
 RUN uv export --frozen --no-dev --no-emit-project -o /tmp/requirements.txt \
-    && pip install --break-system-packages -r /tmp/requirements.txt \
+    && uv pip install --system --break-system-packages --no-cache \
+        -r /tmp/requirements.txt \
     && rm /tmp/requirements.txt
 COPY . /opt/nebula
 

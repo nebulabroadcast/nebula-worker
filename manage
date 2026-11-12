@@ -9,8 +9,8 @@ import nebula
 from nxtools import xml
 
 orig_dir = os.getcwd()
-if orig_dir != "/opt/nebula":
-    os.chdir("/opt/nebula")
+if orig_dir != nebula.config.nebula_root:
+    os.chdir(nebula.config.nebula_root)
 
 nebula.log.user = "manage"
 
@@ -41,22 +41,16 @@ def run_service(service):
             time.sleep(2)
             sys.exit(1)
 
-        try:
-            if sys.argv[1] == "once":
-                break
-        except IndexError:
-            pass
-
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         nebula.log.critical("Usage: ./manage run {id_service}")
 
     command = os.path.basename(sys.argv[1])
-    subcommand = sys.argv[2] if len(sys.argv) > 1 else None
+    subcommand = sys.argv[2]
 
     if not (command == "run" and subcommand and subcommand.isdigit()):
-        nebula.log.critical("Usage: ./manage.py run <service_id>")
+        nebula.log.critical("Usage: ./manage run {id_service}")
 
     try:
         id_service = int(subcommand)
@@ -89,7 +83,7 @@ if __name__ == "__main__":
         except Exception:
             nebula.log.traceback()
             nebula.log.error("Malformed settings XML:\n", settings)
-            db.query("UPDATE services SET autostart=0 WHERE id=%s", [id_service])
+            db.query("UPDATE services SET autostart=FALSE WHERE id=%s", [id_service])
             db.commit()
             nebula.log.critical("Unable to start service")
 

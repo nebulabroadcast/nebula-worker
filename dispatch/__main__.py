@@ -12,8 +12,8 @@ if TYPE_CHECKING:
     from dispatch.agents import BaseAgent
 
 orig_dir = os.getcwd()
-if orig_dir != "/opt/nebula":
-    os.chdir("/opt/nebula")
+if orig_dir != nebula.config.nebula_root:
+    os.chdir(nebula.config.nebula_root)
 
 nebula.log.user = "dispatch"
 

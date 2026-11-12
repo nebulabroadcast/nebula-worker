@@ -6,6 +6,7 @@ from nebula.db import DB
 from nebula.enum import JobState
 from nebula.jobs import Action, get_job
 from nxtools import s2words, xml
+from services.conv.common import ConversionAborted
 from services.conv.ffmpeg import NebulaFFMPEG
 from services.conv.melt import NebulaMelt
 
@@ -56,29 +57,27 @@ class Service(BaseService):
             nebula.log.info(f"Restarting job ID {id_job} (converter restarted)")
         db.commit()
 
+    def check_abort(self) -> bool:
+        """Asked while encoding: was the job aborted, restarted or taken by
+        another service (its status is then in progress again)?"""
+        if not self.job:
+            return False
+        stat = self.job.get_status()
+        return self.job.lost or stat in (JobState.RESTART, JobState.ABORTED)
+
+    def job_aborted(self) -> None:
+        """The encoder stopped because check_abort() said so."""
+        assert self.job
+        if self.job.lost:
+            # Not ours to update any more
+            nebula.log.warning(f"{self.job} is no longer ours, stopped")
+        elif self.job.status == JobState.RESTART:
+            self.job.restart()
+        else:
+            self.job.abort()
+
     def progress_handler(self, progress: float | None = None):
         if not self.job:
-            return
-
-        stat = self.job.get_status()
-        if self.job.lost:
-            # Restarted, maybe taken by another service already (its status
-            # is then in progress again): stop, the job isn't ours to update
-            nebula.log.warning(f"{self.job} is no longer ours, stopping")
-            self.encoder.aborted = True
-            self.encoder.stop()
-            return
-        # Set aborted here, not only in stop(): the process may already have
-        # exited, and then stop() doesn't, and the job would end as done
-        if stat == JobState.RESTART:
-            self.encoder.aborted = True
-            self.encoder.stop()
-            self.job.restart()
-            return
-        elif stat == JobState.ABORTED:
-            self.encoder.aborted = True
-            self.encoder.stop()
-            self.job.abort()
             return
         if progress is None:
             message = "Encoding: Unknown progress"
@@ -129,16 +128,13 @@ class Service(BaseService):
 
                 nebula.log.info(f"Starting task {id_task + 1} of {len(tasks)}")
                 try:
-                    self.encoder.start()
-                    self.encoder.wait(self.progress_handler)
+                    self.encoder.run(self.progress_handler, self.check_abort)
+                except ConversionAborted:
+                    self.job_aborted()
+                    return
                 except Exception as e:
                     self.job.fail(f"Failed to encode task {id_task + 1}: {e}")
-                    # e.g. progress reporting failed: don't leave ffmpeg running
-                    self.encoder.kill()
                     nebula.log.traceback()
-                    return
-
-                if self.encoder.aborted:
                     return
 
                 nebula.log.debug(f"Finalizing task {id_task + 1} of {len(tasks)}")

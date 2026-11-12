@@ -1,21 +1,12 @@
 import os
-import re
-import signal
-import subprocess
 from inspect import cleandoc
 
 import nebula
+from nebula.ffmpeg import FFmpegAbortedError, FFmpegError, FFmpegProgress, ffmpeg
 from nebula.storages import storages
 
-from .common import BaseEncoder, ConversionError, temp_file
+from .common import BaseEncoder, ConversionAborted, ConversionError, temp_file
 from .overlays import Overlay
-
-re_position = re.compile(r"time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})\d*", re.U | re.I)
-
-
-def time2sec(search):
-    hh, mm, ss, cs = search.group(1), search.group(2), search.group(3), search.group(4)
-    return int(hh) * 3600 + int(mm) * 60 + int(ss) + int(cs) / 100.0
 
 
 class FilterChain:
@@ -33,10 +24,9 @@ class FilterChain:
 
 class NebulaFFMPEG(BaseEncoder):
     def configure(self) -> None:
-        self.proc = None
         self.files = {}
-        self.ffparams = ["-y"]
-        self.ffparams.extend(["-i", self.asset.file_path])
+        # ss is inserted before -i (input seeking)
+        self.ffparams = ["-i", self.asset.file_path]
         asset = self.asset
         params = self.params
 
@@ -44,7 +34,6 @@ class NebulaFFMPEG(BaseEncoder):
         # defined in <script> are visible to subsequent evals.
         # (exec() no longer writes to function locals since Python 3.13)
         ns = {**globals(), "self": self, "asset": asset, "params": params}
-        self.error_log = ""
 
         def add_param(p) -> None:
             # Top-level and paramset params alike: indented text is fine,
@@ -52,8 +41,8 @@ class NebulaFFMPEG(BaseEncoder):
             ptext = cleandoc(p.text.strip()) if p.text else ""
             value = str(eval(ptext, ns)) if p.text else ""
             if p.attrib["name"] == "ss":
-                self.ffparams.insert(1, "-ss")
-                self.ffparams.insert(2, value)
+                self.ffparams.insert(0, "-ss")
+                self.ffparams.insert(1, value)
             else:
                 self.ffparams.append("-" + p.attrib["name"])
                 if value:
@@ -140,89 +129,19 @@ class NebulaFFMPEG(BaseEncoder):
                 else:
                     self.ffparams.append(target_path)
 
-    @property
-    def is_running(self) -> bool:
-        if not self.proc:
-            return False
-        return self.proc.poll() is None
-
-    def start(self) -> None:
-        cmd = ["ffmpeg", "-hide_banner"]
-        cmd.extend(str(arg) for arg in self.ffparams)
-        nebula.log.info(f"Executing {' '.join(cmd)}")
-        self.proc = subprocess.Popen(
-            cmd,
-            # Nothing reads stdout: a pipe would fill and block ffmpeg
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-
-    def stop(self) -> None:
-        if self.proc and self.proc.poll() is None:
-            self.aborted = True
-            self.proc.send_signal(signal.SIGINT)
-
-    def wait(self, progress_handler) -> None:
-        assert self.proc
-        assert self.proc.stderr
-
+    def run(self, progress_handler, check_abort=None) -> None:
         duration = self.asset["duration"]
-        buff = b""
 
-        while True:
-            ch = self.proc.stderr.read(1)
-            if not ch:
-                break
-            if ch in [b"\n", b"\r"]:
-                line = buff.decode("utf-8", errors="ignore").strip()
+        def handler(progress: FFmpegProgress) -> None:
+            progress_handler((progress.position / duration) * 100 if duration else 0)
 
-                position_match = re_position.search(line)
-                if position_match:
-                    position = time2sec(position_match)
-                    if not duration:
-                        progress_handler(0)
-                    else:
-                        progress = (position / duration) * 100
-                        progress_handler(progress)
-                    self.error_log = ""
-
-                elif line == "Press [q] to stop, [?] for help":
-                    self.error_log = ""
-
-                else:
-                    self.error_log += line + "\n"
-                buff = b""
-            else:
-                buff += ch
-
-        if self.proc:
-            self.proc.wait()
-            if self.proc.stderr:
-                self.error_log += self.proc.stderr.read().decode(
-                    "utf-8", errors="ignore"
-                )
-
-    def finalize(self) -> None:
-        if not self.proc:
-            return
-        assert self.proc.stderr
-
-        # != 0: a process killed by a signal has a negative code
-        if self.proc.returncode != 0:
-            last_lines = self.error_log.splitlines()[-10:]
+        try:
+            ffmpeg(self.ffparams, handler, check_abort)
+        except FFmpegAbortedError as e:
+            raise ConversionAborted() from e
+        except FFmpegError as e:
+            lines = str(e).splitlines()
             nebula.log.debug("FFMPEG error log:")
-            for line in last_lines:
+            for line in lines[-10:]:
                 nebula.log.debug(line)
-
-            lmsg = last_lines[-1] if last_lines else "Unknown error"
-            lmsg = lmsg.strip()
-            if lmsg:
-                lmsg = f" ({lmsg})"
-            raise ConversionError(f"Encoding failed{lmsg}")
-
-        for temp_path, target_path in self.files.items():
-            try:
-                nebula.log.debug(f"Moving {temp_path} to {target_path}")
-                os.rename(temp_path, target_path)
-            except OSError as e:
-                raise ConversionError("Unable to move output file") from e
+            raise ConversionError(f"Encoding failed ({lines[-1].strip()})") from e

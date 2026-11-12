@@ -37,9 +37,9 @@ class PlayoutPluginManifest(BaseModel):
 
 class PlayoutPlugin:
     name: ClassVar[str]
-    title: ClassVar[str | None] = None
+    title: str | None = None
     slots: ClassVar[list[PlayoutPluginSlot]] = []
-    tasks: ClassVar[list[Callable]] = []
+    tasks: ClassVar[list[Callable[[], Any]]] = []
 
     id_layer: int = 0
     busy: bool = False
