@@ -1,6 +1,6 @@
 [project]
 name = "nebula-worker"
-version = "6.1.0"
+version = "6.1.1"
 description = ""
 requires-python = ">=3.12"
 dependencies = [
