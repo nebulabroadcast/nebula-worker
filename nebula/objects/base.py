@@ -89,6 +89,17 @@ class Meta(dict[str, Any]):
     def deleted(self) -> set[str]:
         return self._stored.keys() - self.keys()
 
+    @property
+    def text_changed(self) -> bool:
+        """Whether a change affects the full-text index (create_ft_index)."""
+        stored = self._stored
+        return any(
+            key == "subclips"
+            or isinstance(self.get(key), str)
+            or isinstance(stored.get(key), str)
+            for key in self.changed | self.deleted
+        )
+
 
 _MISSING = object()
 
@@ -108,7 +119,6 @@ class BaseObject:
         if "db" in kwargs:
             self._db = kwargs["db"]
 
-        self.text_changed = self.meta_changed = False
         self.is_new = True
         meta = kwargs.get("meta", {})
         if id:
@@ -272,17 +282,17 @@ class BaseObject:
             assert key in self.meta, f"Unable to save {self}. {key} is required"
 
         is_new = self.is_new
+        text_changed = self.meta.text_changed
         if is_new:
             self._insert(**kwargs)
         else:
             self._update(**kwargs)
             self.invalidate()
-        if self.text_changed or is_new:
+        if text_changed or is_new:
             self.update_ft_index(is_new)
         if kwargs.get("commit", True):
             self.db.commit()
         self.meta.saved()
-        self.text_changed = self.meta_changed = False
         self.is_new = False
         if kwargs.get("notify", True):
             messaging.send(
@@ -375,7 +385,14 @@ class BaseObject:
                 "DELETE FROM ft WHERE object_type=%s AND id=%s",
                 [self.object_type_id, self.id],
             )
-        ft = create_ft_index(self.meta)
+        meta = self.meta
+        if not is_new:
+            # This copy may be stale: index what the row holds after the update
+            self.db.query(
+                f"SELECT meta FROM {self.table_name} WHERE id = %s", [self.id]
+            )
+            meta = self.db.fetchall()[0][0]
+        ft = create_ft_index(meta)
         if not ft:
             return
         args = [(self.id, self.object_type_id, ft[word], word) for word in ft]
